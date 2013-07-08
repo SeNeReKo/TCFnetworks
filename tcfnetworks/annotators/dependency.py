@@ -34,6 +34,11 @@ PUNCT = ISOcat['punctuation']
 
 class DependencyWorker(AddingWorker):
 
+    __options__ = {
+        'method': 'semantic',
+        'label': 'semantic_unit',
+    }
+
     def add_annotations(self):
         graph = None
         for parse in self.corpus.xpath('text:depparsing/text:parse',
@@ -44,10 +49,7 @@ class DependencyWorker(AddingWorker):
                 len(graph.find(tcf.P_TEXT + 'edges'))))
         self.corpus.append(graph)
 
-    def parse_to_graph(self, parse, graph=None,
-                       method='semantic', node_label_attrib='semantic_unit'):
-        logging.debug('Use token test method "{}" and node label "{}".'.format(
-                      method, node_label_attrib))
+    def parse_to_graph(self, parse, graph=None):
         # Create graph or append to given graph.
         if graph == None:
             graph = tcf.Element(tcf.P_TEXT + 'graph')
@@ -58,16 +60,18 @@ class DependencyWorker(AddingWorker):
             edges = graph.find(tcf.P_TEXT + 'edges')
         # Add edges
         try:
-            self.test_token = getattr(self, 'test_token_{}'.format(method))
+            self.test_token = getattr(self,
+                    'test_token_{}'.format(self.options.method))
         except AttributeError:
-            logging.error('Method "{}" is not supported.'.format(method))
+            logging.error('Method "{}" is not supported.'.format(
+                    self.options.method))
             sys.exit(-1)
         for a, b in self.find_edges(parse, parse.root):
             # Find or add nodes
             edgenodes = []
             for token_id in a, b:
                 token = self.corpus.find_token(token_id)
-                node_label = getattr(token, node_label_attrib)
+                node_label = getattr(token, self.options.label)
                 node = nodes.find_node(node_label)
                 if node is None:
                     node = nodes.add_node(node_label)
@@ -107,6 +111,26 @@ class DependencyWorker(AddingWorker):
             return True
         if token.reference is not None:
             return True
+        return False
+
+    def test_token_entity(self, token, resolve=True):
+        if token.named_entity is not None:
+            return True
+        if resolve and token.reference is not None:
+            for reftoken in token.reference.tokens:
+                if self.test_token_entity(reftoken, False):
+                    return True
+        return False
+
+    def test_token_actor(self, token, resolve=True):
+        if token.named_entity is not None:
+            if token.named_entity.get('class') in ('PER', 'ORG'):
+                # FIXME: Use proper tags instead of hardcoded CoNLL2002 tags.
+                return True
+        if resolve and token.reference is not None:
+            for reftoken in token.reference.tokens:
+                if self.test_token_actor(reftoken, False):
+                    return True
         return False
 
     def find_edges(self, parse, head):
