@@ -25,8 +25,9 @@ import logging
 
 from tcflib import tcf
 from tcflib.service import run_as_cli
-from dependency import DependencyWorker
+from extended_dependency import DependencyWorker
 from cooccurrence import CooccurrenceWorker
+from tcfnetworks.utils import graph_to_tcf
 
 
 class ComparingWorker(DependencyWorker):
@@ -37,19 +38,29 @@ class ComparingWorker(DependencyWorker):
         for parse in self.corpus.xpath('text:depparsing/text:parse',
                                        namespaces=tcf.NS):
             graph = self.parse_to_graph(parse, graph=graph)
+        graph = graph_to_tcf(graph)
         for edge in graph.find(tcf.P_TEXT + 'edges'):
             edge.set('label', 'Dependency')
-        # 2: Cooccurrence graph
+        # 2: Extended dependency graph
+        graph1 = None
+        self.options.distance = 2
+        for parse in self.corpus.xpath('text:depparsing/text:parse',
+                                       namespaces=tcf.NS):
+            graph1 = self.parse_to_graph(parse, graph=graph1)
+        graph1 = graph_to_tcf(graph1)
+        for edge in graph1.find(tcf.P_TEXT + 'edges'):
+            edge.set('label', 'Extended')
+        # 3: Cooccurrence graph
         # TODO: Take paragraph structure into account
         tokens = [token for token in self.corpus.tokens
-                  if not token.pos.is_closed]
+                  if not token.postag.is_closed]
         graph2 = CooccurrenceWorker.build_graph(self, tokens)
         graph2 = CooccurrenceWorker.build_graph(self, tokens,
                                                 gap=5, graph=graph2)
         for edge in graph2.find(tcf.P_TEXT + 'edges'):
             edge.set('label', 'Cooccurrence')
         # Merge graphs
-        graph = self.merge_graphs(graph, graph2)
+        graph = self.merge_graphs(graph, graph1, graph2)
         # Finish
         logging.info('Graph has {} nodes and {} edges.'.format(
                 len(graph.find(tcf.P_TEXT + 'nodes')),
@@ -72,14 +83,15 @@ class ComparingWorker(DependencyWorker):
                 node_a_id = new_edge.get('source')
                 node_b_id = new_edge.get('target')
                 # TODO: Factor out into XPath object
-                node_a = base_nodes.find_node(
-                        new_nodes.xpath('string(text:node[@ID = $nid])',
-                                        namespaces=tcf.NS,
-                                        nid=node_a_id))
-                node_b = base_nodes.find_node(
-                        new_nodes.xpath('string(text:node[@ID = $nid])',
-                                        namespaces=tcf.NS,
-                                        nid=node_b_id))
+                node_a_label = new_nodes.xpath('string(text:node[@ID = $nid])',
+                                               namespaces=tcf.NS,
+                                               nid=node_a_id)
+                node_b_label = new_nodes.xpath('string(text:node[@ID = $nid])',
+                                               namespaces=tcf.NS,
+                                               nid=node_b_id)
+
+                node_a = base_nodes.find_node(node_a_label)
+                node_b = base_nodes.find_node(node_b_label)
                 base_edge = base_edges.find_edge(node_a.get('ID'),
                                                  node_b.get('ID'))
                 if base_edge is None:
