@@ -38,7 +38,7 @@ class ComparingWorker(DependencyWorker):
         if not os.path.isdir(outdir):
             os.mkdir(outdir)
         for i, parse in enumerate(
-                self.corpus.xpath('text:depparsing/text:parse',
+                self.corpus.xpath('text:depparsing/text:parse[18]',
                 namespaces=tcf.NS)):
             for graph, layout_method, label in self.iter_graphs(parse):
                 # Easiest way to get the graph into iGraph: save it as GraphML
@@ -49,9 +49,17 @@ class ComparingWorker(DependencyWorker):
                     graph.vs['label'] = graph.vs['name']
                 filebase = os.path.join(outdir, '{count:03d}_{label}'.format(
                                                 count=i, label=label))
+                graph.write_graphml(filebase + '.graphml')
                 # Draw
-                layout = graph.layout(layout_method)  # pass root node
-                igraph.plot(graph, filebase + '.png', layout=layout)
+                if layout_method == 'tree':
+                    root_token = self.corpus.find_token(parse.root)
+                    root = graph.vs.find(label=root_token.text)
+                    layout = graph.layout_reingold_tilford(root=[root.index])
+                else:
+                    layout = graph.layout(layout_method)
+                igraph.plot(graph, filebase + '.svg', layout=layout,
+                            vertex_color='#1f77b4', edge_color='#999',
+                            vertex_frame_color='#fff', label_size=14)
 
     def iter_graphs(self, parse):
         yield (self.parse_to_tree(parse), 'tree', 'dependency')
