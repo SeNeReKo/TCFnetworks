@@ -34,6 +34,8 @@ from tcfnetworks.utils import graph_to_tcf, merge_graphs
 
 ISOcat = TagSet('DC-1345')
 PUNCT = ISOcat['punctuation']
+VERB = ISOcat['verb']
+ADVERB = ISOcat['adverb']
 
 
 class DependencyWorker(AddingWorker):
@@ -142,6 +144,13 @@ class DependencyWorker(AddingWorker):
         if token.reference is not None:
             return True
         return False
+
+    def test_token_concept(self, token):
+        if not self.test_token_semantic(token):
+            return False
+        if token.postag.is_a(VERB) or token.postag.is_a(ADVERB):
+            return False
+        return True
 
     def test_token_entity(self, token, resolve=True):
         if token.named_entity is not None:
