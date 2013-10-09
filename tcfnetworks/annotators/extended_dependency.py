@@ -137,7 +137,7 @@ class DependencyWorker(AddingWorker):
         return not token.postag.is_closed
 
     def test_token_semantic(self, token):
-        if not token.postag.is_closed:
+        if not token.postag.is_closed and not token.postag.is_a(ADVERB):
             return True
         if token.named_entity is not None:
             return True
@@ -148,7 +148,7 @@ class DependencyWorker(AddingWorker):
     def test_token_concept(self, token):
         if not self.test_token_semantic(token):
             return False
-        if token.postag.is_a(VERB) or token.postag.is_a(ADVERB):
+        if token.postag.is_a(VERB):
             return False
         return True
 
