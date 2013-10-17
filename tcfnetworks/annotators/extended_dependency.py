@@ -187,24 +187,31 @@ class DependencyWorker(AddingWorker):
 
         """
         head_token = self.corpus.find_token(head)
-        if self.test_token(head_token):
-            for dependent in self.find_dependents(parse, head):
+        dependents = list(self.find_dependents(parse, head))
+        # Store to avoid duplicate test.
+        token_is_valid = self.test_token(head_token)
+        # head-dependent edges
+        if token_is_valid:
+            for dependent in dependents:
                 yield (head, dependent)
-                # Recursively get the nonclosed edges where the dependent is
-                # the head.
-                for dependent_edge in self.find_edges(
-                        parse, dependent):
-                    yield dependent_edge
-        else:
-            # Since we have no nonclosed head, we use direct edges between all
-            # nonclosed dependents of head, and then go from there.
-            dependents = list(self.find_dependents(parse, head))
+        # dependent-dependent edges
+        if not token_is_valid or head_token.postag.is_a(VERB):
             for combination in combinations(dependents, 2):
                 yield combination
-            for dependent in dependents:
-                for dependent_edge in self.find_edges(
-                        parse, dependent):
-                    yield dependent_edge
+        # Search dependents for invalid verbs (like copula). They are
+        # particularly relevant for edges (think of "be"), but they get lost
+        # when only handling valid dependents. We re-add them before searching
+        # for child edges.
+        for dependent in parse.find_dependents(head):
+            if dependent not in dependents:
+                dep_token = self.corpus.find_token(dependent)
+                if dep_token.postag.is_a(VERB) and not self.test_token(dep_token):
+                    dependents.append(dependent)
+        # search child edges
+        for dependent in dependents:
+            for dependent_edge in self.find_edges(
+                    parse, dependent):
+                yield dependent_edge
 
     def find_dependents(self, parse, head):
         """
