@@ -22,6 +22,7 @@ This annotator implements dependency networks as a TCF compatible service.
 """
 
 import sys
+import os
 import logging
 from itertools import combinations
 
@@ -44,6 +45,7 @@ class DependencyWorker(AddingWorker):
         'method': 'semantic',
         'label': 'semantic_unit',
         'distance': 1,
+        'stopwords': '',
     }
 
     def add_annotations(self):
@@ -62,7 +64,19 @@ class DependencyWorker(AddingWorker):
 
     def parse_to_graph(self, parse, graph=None):
         parse_graph = igraph.Graph()
-        # Add edges
+        # Set up filtering
+        if self.options.stopwords:
+            stopwordspath = os.path.join(os.path.dirname(__file__),
+                                         'data', 'stopwords',
+                                         self.options.stopwords)
+            try:
+                with open(stopwordspath) as stopwordsfile:
+                    self.stopwords = [token.strip() for token
+                                      in stopwordsfile.readlines() if token]
+            except FileNotFoundError:
+                logging.error('No stopwords list "{}".'.format(
+                        self.options.stopwords))
+                sys.exit(-1)
         try:
             self.test_token = getattr(self,
                     'test_token_{}'.format(self.options.method))
@@ -70,6 +84,7 @@ class DependencyWorker(AddingWorker):
             logging.error('Method "{}" is not supported.'.format(
                     self.options.method))
             sys.exit(-1)
+        # Add edges
         for a, b in self.find_edges(parse, parse.root):
             # Find or add nodes
             vertices = []
@@ -130,15 +145,26 @@ class DependencyWorker(AddingWorker):
     def test_token(self):
         logging.warn('No token test method set.')
 
+    def test_token_stopwords(self, token):
+        if self.options.stopwords:
+            token_label = str(getattr(token, self.options.label))
+            if token_label in self.stopwords:
+                return False
+        return True
+
     def test_token_full(self, token):
-        return not token.postag.is_a(PUNCT)
+        if token.postag.is_a(PUNCT):
+            return False
+        return self.test_token_stopwords(token)
 
     def test_token_nonclosed(self, token):
-        return not token.postag.is_closed
+        if token.postag.is_closed:
+            return False
+        return self.test_token_stopwords(token)
 
     def test_token_semantic(self, token):
         if not token.postag.is_closed and not token.postag.is_a(ADVERB):
-            return True
+            return self.test_token_stopwords(token)
         if token.named_entity is not None:
             return True
         if token.reference is not None:
