@@ -33,13 +33,21 @@ from tcfnetworks.utils import tcf_to_graph
 
 class ComparingWorker(DependencyWorker):
 
+    __options__ = {
+        'first': 1,
+        'number': 5,
+    }
+
     def add_annotations(self):
         outdir = 'output'
         if not os.path.isdir(outdir):
             os.mkdir(outdir)
         for i, parse in enumerate(
-                self.corpus.xpath('text:depparsing/text:parse[18]',
-                namespaces=tcf.NS)):
+                self.corpus.xpath('text:depparsing/text:parse['
+                'position() >= $start and position() < $end]',
+                start=self.options.first,
+                end=self.options.first + self.options.number,
+                namespaces=tcf.NS), start=1):
             for graph, layout_method, label in self.iter_graphs(parse):
                 # Easiest way to get the graph into iGraph: save it as GraphML
                 # and load it.
