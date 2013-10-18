@@ -33,13 +33,15 @@ from tcfnetworks.utils import tcf_to_graph
 
 class ComparingWorker(DependencyWorker):
 
-    __options__ = {
+    # Little trick to upate the options dict.
+    __options__ = dict(list(DependencyWorker.__options__.items()) + 
+        list({
         'first': 1,
         'number': 5,
         'methods': ['dependency', 'nonclosed_lemma', 'nonclosed_semantic',
                     'nonclosed_semantic_extended'],
         'output': ['svg', 'graphml']
-    }
+    }.items()))
 
     def add_annotations(self):
         outdir = 'output'
@@ -78,16 +80,16 @@ class ComparingWorker(DependencyWorker):
     def iter_graphs(self, parse):
         if 'dependency' in self.options.methods:
             yield (self.parse_to_tree(parse), 'tree', 'dependency')
-        self.options.method = 'full'
+        self.options.nodes = 'full'
         self.options.label = 'lemma'
         self.options.distance = 1
         if 'full_lemma' in self.options.methods:
             yield (self.parse_to_graph(parse), 'kamada_kawai', 'full_lemma')
-        self.options.method = 'nonclosed'
+        self.options.nodes = 'nonclosed'
         if 'nonclosed_lemma' in self.options.methods:
             yield (self.parse_to_graph(parse), 'kamada_kawai',
                    'nonclosed_lemma')
-        self.options.method = 'semantic'
+        self.options.nodes = 'semantic'
         self.options.label = 'semantic_unit'
         if 'nonclosed_semantic' in self.options.methods:
             yield (self.parse_to_graph(parse), 'kamada_kawai',

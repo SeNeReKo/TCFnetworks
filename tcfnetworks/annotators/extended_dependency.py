@@ -35,6 +35,7 @@ from tcfnetworks.utils import graph_to_tcf, merge_graphs
 
 ISOcat = TagSet('DC-1345')
 PUNCT = ISOcat['punctuation']
+NOUN = ISOcat['noun']
 VERB = ISOcat['verb']
 ADVERB = ISOcat['adverb']
 
@@ -42,8 +43,9 @@ ADVERB = ISOcat['adverb']
 class DependencyWorker(AddingWorker):
 
     __options__ = {
-        'method': 'semantic',
+        'nodes': 'semantic',
         'label': 'semantic_unit',
+        'edges': 'dependency',
         'distance': 1,
         'stopwords': '',
     }
@@ -79,10 +81,19 @@ class DependencyWorker(AddingWorker):
                 sys.exit(-1)
         try:
             self.test_token = getattr(self,
-                    'test_token_{}'.format(self.options.method))
+                    'test_token_{}'.format(self.options.nodes))
         except AttributeError:
             logging.error('Method "{}" is not supported.'.format(
-                    self.options.method))
+                    self.options.nodes))
+            sys.exit(-1)
+        try:
+            self.find_edges = getattr(self,
+                    'find_edges_{}'.format(self.options.edges))
+            if self.options.edges == 'verbs_nouns':
+                self.test_token = lambda token: token.postag.is_a(VERB)
+        except AttributeError:
+            logging.error('Method "{}" is not supported.'.format(
+                    self.options.edges))
             sys.exit(-1)
         # Add edges
         for a, b in self.find_edges(parse, parse.root):
@@ -199,6 +210,9 @@ class DependencyWorker(AddingWorker):
         return False
 
     def find_edges(self, parse, head):
+        logging.warn('No edge detection method set.')
+
+    def find_edges_dependency(self, parse, head):
         """
         Generator method to find edges based on a dependency parse.
 
@@ -235,6 +249,30 @@ class DependencyWorker(AddingWorker):
                     dependents.append(dependent)
         # search child edges
         for dependent in dependents:
+            for dependent_edge in self.find_edges(
+                    parse, dependent):
+                yield dependent_edge
+
+    def find_edges_verbs_nouns(self, parse, head):
+        """
+        Generator method to find edges based on verbs.
+
+        This method only links verbs and nouns.
+
+        :parameters:
+            - `parse`: A parse element.
+            - `head`: The ID of the head element.
+        :returns:
+            - yields pairs of (head, dependent) IDs.
+
+        """
+        head_token = self.corpus.find_token(head)
+        if head_token.postag.is_a(VERB):
+            for dependent in parse.find_dependents(head):
+                dep_token = self.corpus.find_token(dependent)
+                if dep_token.postag.is_a(NOUN):
+                    yield (head, dependent)
+        for dependent in self.find_dependents(parse, head):
             for dependent_edge in self.find_edges(
                     parse, dependent):
                 yield dependent_edge
