@@ -33,13 +33,26 @@ from tcfnetworks.utils import tcf_to_graph
 
 class ComparingWorker(DependencyWorker):
 
+    # Little trick to upate the options dict.
+    __options__ = dict(list(DependencyWorker.__options__.items()) + 
+        list({
+        'first': 1,
+        'number': 5,
+        'methods': ['dependency', 'nonclosed_lemma', 'nonclosed_semantic',
+                    'nonclosed_semantic_extended'],
+        'output': ['svg', 'graphml']
+    }.items()))
+
     def add_annotations(self):
         outdir = 'output'
         if not os.path.isdir(outdir):
             os.mkdir(outdir)
         for i, parse in enumerate(
-                self.corpus.xpath('text:depparsing/text:parse[18]',
-                namespaces=tcf.NS)):
+                self.corpus.xpath('text:depparsing/text:parse['
+                'position() >= $start and position() < $end]',
+                start=self.options.first,
+                end=self.options.first + self.options.number,
+                namespaces=tcf.NS), start=1):
             for graph, layout_method, label in self.iter_graphs(parse):
                 # Easiest way to get the graph into iGraph: save it as GraphML
                 # and load it.
@@ -49,33 +62,42 @@ class ComparingWorker(DependencyWorker):
                     graph.vs['label'] = graph.vs['name']
                 filebase = os.path.join(outdir, '{count:03d}_{label}'.format(
                                                 count=i, label=label))
-                graph.write_graphml(filebase + '.graphml')
-                # Draw
-                if layout_method == 'tree':
-                    root_token = self.corpus.find_token(parse.root)
-                    root = graph.vs.find(label=root_token.text)
-                    layout = graph.layout_reingold_tilford(root=[root.index])
-                else:
-                    layout = graph.layout(layout_method)
-                igraph.plot(graph, filebase + '.svg', layout=layout,
-                            vertex_color='#1f77b4', edge_color='#999',
-                            vertex_frame_color='#fff', label_size=14)
+                if 'graphml' in self.options.output:
+                    graph.write_graphml(filebase + '.graphml')
+                if 'svg' in self.options.output:
+                    # Draw
+                    if layout_method == 'tree':
+                        root_token = self.corpus.find_token(parse.root)
+                        root = graph.vs.find(label=root_token.text)
+                        layout = graph.layout_reingold_tilford(
+                                                            root=[root.index])
+                    else:
+                        layout = graph.layout(layout_method)
+                    igraph.plot(graph, filebase + '.svg', layout=layout,
+                                vertex_color='#1f77b4', edge_color='#999',
+                                vertex_frame_color='#fff', label_size=14)
 
     def iter_graphs(self, parse):
-        yield (self.parse_to_tree(parse), 'tree', 'dependency')
-        self.options.method = 'full'
+        if 'dependency' in self.options.methods:
+            yield (self.parse_to_tree(parse), 'tree', 'dependency')
+        self.options.nodes = 'full'
         self.options.label = 'lemma'
         self.options.distance = 1
-        yield (self.parse_to_graph(parse), 'kamada_kawai', 'full_lemma')
-        self.options.method = 'nonclosed'
-        yield (self.parse_to_graph(parse), 'kamada_kawai', 'nonclosed_lemma')
-        self.options.method = 'semantic'
+        if 'full_lemma' in self.options.methods:
+            yield (self.parse_to_graph(parse), 'kamada_kawai', 'full_lemma')
+        self.options.nodes = 'nonclosed'
+        if 'nonclosed_lemma' in self.options.methods:
+            yield (self.parse_to_graph(parse), 'kamada_kawai',
+                   'nonclosed_lemma')
+        self.options.nodes = 'semantic'
         self.options.label = 'semantic_unit'
-        yield (self.parse_to_graph(parse), 'kamada_kawai',
-               'nonclosed_semantic')
+        if 'nonclosed_semantic' in self.options.methods:
+            yield (self.parse_to_graph(parse), 'kamada_kawai',
+                   'nonclosed_semantic')
         self.options.distance = 2
-        yield (self.parse_to_graph(parse), 'kamada_kawai',
-               'nonclosed_semantic_extended')
+        if 'nonclosed_semantic_extended' in self.options.methods:
+            yield (self.parse_to_graph(parse), 'kamada_kawai',
+                   'nonclosed_semantic_extended')
 
     def parse_to_tree(self, parse):
         graph = tcf.Element(tcf.P_TEXT + 'graph')

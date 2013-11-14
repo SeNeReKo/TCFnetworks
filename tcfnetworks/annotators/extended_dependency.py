@@ -22,6 +22,7 @@ This annotator implements dependency networks as a TCF compatible service.
 """
 
 import sys
+import os
 import logging
 from itertools import combinations
 
@@ -34,6 +35,7 @@ from tcfnetworks.utils import graph_to_tcf, merge_graphs
 
 ISOcat = TagSet('DC-1345')
 PUNCT = ISOcat['punctuation']
+NOUN = ISOcat['noun']
 VERB = ISOcat['verb']
 ADVERB = ISOcat['adverb']
 
@@ -41,9 +43,11 @@ ADVERB = ISOcat['adverb']
 class DependencyWorker(AddingWorker):
 
     __options__ = {
-        'method': 'semantic',
+        'nodes': 'semantic',
         'label': 'semantic_unit',
+        'edges': 'dependency',
         'distance': 1,
+        'stopwords': '',
     }
 
     def add_annotations(self):
@@ -62,14 +66,36 @@ class DependencyWorker(AddingWorker):
 
     def parse_to_graph(self, parse, graph=None):
         parse_graph = igraph.Graph()
-        # Add edges
+        # Set up filtering
+        if self.options.stopwords:
+            stopwordspath = os.path.join(os.path.dirname(__file__),
+                                         'data', 'stopwords',
+                                         self.options.stopwords)
+            try:
+                with open(stopwordspath) as stopwordsfile:
+                    self.stopwords = [token.strip() for token
+                                      in stopwordsfile.readlines() if token]
+            except FileNotFoundError:
+                logging.error('No stopwords list "{}".'.format(
+                        self.options.stopwords))
+                sys.exit(-1)
         try:
             self.test_token = getattr(self,
-                    'test_token_{}'.format(self.options.method))
+                    'test_token_{}'.format(self.options.nodes))
         except AttributeError:
             logging.error('Method "{}" is not supported.'.format(
-                    self.options.method))
+                    self.options.nodes))
             sys.exit(-1)
+        try:
+            self.find_edges = getattr(self,
+                    'find_edges_{}'.format(self.options.edges))
+            if self.options.edges == 'verbs_nouns':
+                self.test_token = lambda token: token.postag.is_a(VERB)
+        except AttributeError:
+            logging.error('Method "{}" is not supported.'.format(
+                    self.options.edges))
+            sys.exit(-1)
+        # Add edges
         for a, b in self.find_edges(parse, parse.root):
             # Find or add nodes
             vertices = []
@@ -130,15 +156,26 @@ class DependencyWorker(AddingWorker):
     def test_token(self):
         logging.warn('No token test method set.')
 
+    def test_token_stopwords(self, token):
+        if self.options.stopwords:
+            token_label = str(getattr(token, self.options.label))
+            if token_label in self.stopwords:
+                return False
+        return True
+
     def test_token_full(self, token):
-        return not token.postag.is_a(PUNCT)
+        if token.postag.is_a(PUNCT):
+            return False
+        return self.test_token_stopwords(token)
 
     def test_token_nonclosed(self, token):
-        return not token.postag.is_closed
+        if token.postag.is_closed:
+            return False
+        return self.test_token_stopwords(token)
 
     def test_token_semantic(self, token):
         if not token.postag.is_closed and not token.postag.is_a(ADVERB):
-            return True
+            return self.test_token_stopwords(token)
         if token.named_entity is not None:
             return True
         if token.reference is not None:
@@ -173,6 +210,9 @@ class DependencyWorker(AddingWorker):
         return False
 
     def find_edges(self, parse, head):
+        logging.warn('No edge detection method set.')
+
+    def find_edges_dependency(self, parse, head):
         """
         Generator method to find edges based on a dependency parse.
 
@@ -187,24 +227,55 @@ class DependencyWorker(AddingWorker):
 
         """
         head_token = self.corpus.find_token(head)
-        if self.test_token(head_token):
-            for dependent in self.find_dependents(parse, head):
+        dependents = list(self.find_dependents(parse, head))
+        # Store to avoid duplicate test.
+        token_is_valid = self.test_token(head_token)
+        # head-dependent edges
+        if token_is_valid:
+            for dependent in dependents:
                 yield (head, dependent)
-                # Recursively get the nonclosed edges where the dependent is
-                # the head.
-                for dependent_edge in self.find_edges(
-                        parse, dependent):
-                    yield dependent_edge
-        else:
-            # Since we have no nonclosed head, we use direct edges between all
-            # nonclosed dependents of head, and then go from there.
-            dependents = list(self.find_dependents(parse, head))
+        # dependent-dependent edges
+        if not token_is_valid or head_token.postag.is_a(VERB):
             for combination in combinations(dependents, 2):
                 yield combination
-            for dependent in dependents:
-                for dependent_edge in self.find_edges(
-                        parse, dependent):
-                    yield dependent_edge
+        # Search dependents for invalid verbs (like copula). They are
+        # particularly relevant for edges (think of "be"), but they get lost
+        # when only handling valid dependents. We re-add them before searching
+        # for child edges.
+        for dependent in parse.find_dependents(head):
+            if dependent not in dependents:
+                dep_token = self.corpus.find_token(dependent)
+                if dep_token.postag.is_a(VERB) and not self.test_token(dep_token):
+                    dependents.append(dependent)
+        # search child edges
+        for dependent in dependents:
+            for dependent_edge in self.find_edges(
+                    parse, dependent):
+                yield dependent_edge
+
+    def find_edges_verbs_nouns(self, parse, head):
+        """
+        Generator method to find edges based on verbs.
+
+        This method only links verbs and nouns.
+
+        :parameters:
+            - `parse`: A parse element.
+            - `head`: The ID of the head element.
+        :returns:
+            - yields pairs of (head, dependent) IDs.
+
+        """
+        head_token = self.corpus.find_token(head)
+        if head_token.postag.is_a(VERB):
+            for dependent in parse.find_dependents(head):
+                dep_token = self.corpus.find_token(dependent)
+                if dep_token.postag.is_a(NOUN):
+                    yield (head, dependent)
+        for dependent in self.find_dependents(parse, head):
+            for dependent_edge in self.find_edges(
+                    parse, dependent):
+                yield dependent_edge
 
     def find_dependents(self, parse, head):
         """

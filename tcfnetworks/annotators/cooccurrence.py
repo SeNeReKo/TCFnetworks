@@ -26,6 +26,8 @@ pathways-meaning-circulation-text-network-analysis/>.
 
 """
 
+import sys
+import os
 import logging
 from itertools import combinations
 
@@ -35,7 +37,23 @@ from tcflib.service import AddingWorker, run_as_cli
 
 class CooccurrenceWorker(AddingWorker):
 
+    __options__ = {
+        'stopwords': '',
+    }
+
     def add_annotations(self):
+        if self.options.stopwords:
+            stopwordspath = os.path.join(os.path.dirname(__file__),
+                                         'data', 'stopwords',
+                                         self.options.stopwords)
+            try:
+                with open(stopwordspath) as stopwordsfile:
+                    stopwords = [token.strip() for token
+                                 in stopwordsfile.readlines() if token]
+            except FileNotFoundError:
+                logging.error('No stopwords list "{}".'.format(
+                        self.options.stopwords))
+                sys.exit(-1)
         # TODO: Take paragraphs into account.
         tokens = []
         for token in self.corpus.tokens:
@@ -48,6 +66,9 @@ class CooccurrenceWorker(AddingWorker):
                     tokens.append(token)
                 else:
                     continue
+            elif (self.options.stopwords and
+                    str(token.semantic_unit) not in stopwords):
+                 tokens.append(token)
             elif not token.postag.is_closed:
                 tokens.append(token)
         graph = self.build_graph(tokens, gap=2)
