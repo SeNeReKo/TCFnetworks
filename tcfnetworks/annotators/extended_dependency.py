@@ -241,18 +241,23 @@ class DependencyWorker(AddingWorker):
             for dependent in dependents:
                 yield (head, dependent)
         # dependent-dependent edges
+        dep_combinations = ()
         if not token_is_valid or head_token.postag.is_a(VERB):
-            for combination in combinations(dependents, 2):
+            dep_combinations = list(combinations(dependents, 2))
+            for combination in dep_combinations:
                 yield combination
         # Search dependents for invalid verbs (like copula). They are
         # particularly relevant for edges (think of "be"), but they get lost
-        # when only handling valid dependents. We re-add them before searching
-        # for child edges.
+        # when only handling valid dependents. We relate their dependents
+        # explicitly.
         for dependent in parse.find_dependents(head):
             if dependent not in dependents:
                 dep_token = self.corpus.find_token(dependent)
-                if dep_token.postag.is_a(VERB) and not self.test_token(dep_token):
-                    dependents.append(dependent)
+                if dep_token.postag.is_a(VERB):
+                    depdeps = self.find_dependents(parse, dependent, False)
+                    for combination in combinations(depdeps, 2):
+                        if not combination in dep_combinations:
+                            yield combination
         # search child edges
         for dependent in dependents:
             for dependent_edge in self.find_edges(
@@ -283,16 +288,17 @@ class DependencyWorker(AddingWorker):
                     parse, dependent):
                 yield dependent_edge
 
-    def find_dependents(self, parse, head):
+    def find_dependents(self, parse, head, descend=True):
         """
         Generator method that returns all filtered dependents of a given head.
 
-        If the direct dependents of a head are filtered out, it looks for
-        their dependents until it finds valid ones.
+        If the direct dependents of a head are filtered out and `descend` is
+        True, it looks for their dependents until it finds valid ones.
 
         :parameters:
             - `parse`: A parse element.
             - `head`: The ID of the head element.
+            - `descend`: Descend the parse tree to find valid tokens.
         :returns:
             - yields dependent's IDs.
 
@@ -301,7 +307,7 @@ class DependencyWorker(AddingWorker):
             dependent_token = self.corpus.find_token(dependent)
             if self.test_token(dependent_token):
                 yield dependent
-            else:
+            elif descend:
                 for dependent2 in self.find_dependents(parse, dependent):
                     yield dependent2
 
