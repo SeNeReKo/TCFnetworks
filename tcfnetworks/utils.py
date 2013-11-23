@@ -43,8 +43,10 @@ def graph_to_tcf(graph):
         for key, value in vertex.attributes().items():
             if key == 'name':
                 continue
-            if isinstance(value, (list, tuple)):
+            elif isinstance(value, (list, tuple)):
                 tnode.set_value_list(key, value)
+            elif isinstance(value, bool):
+                tnode.set(key, str(value).lower())
             else:
                 tnode.set(key, str(value))
     for edge in graph.es:
@@ -83,6 +85,8 @@ def merge_graphs(*graphs):
                 for key, value in vertex2.attributes().items():
                     if key not in vertex.attribute_names():
                         vertex[key] = value
+                    elif isinstance(value, bool):
+                        vertex[key] = vertex[key] and value
                     elif isinstance(value, str):
                         if vertex[key] != value:
                             vertex[key] += ' {}'.format(value)

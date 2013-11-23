@@ -14,12 +14,15 @@
     indent="yes" />
 
   <xsl:strip-space elements="*" />
-
+  
   <xsl:template match="/">
     <graphml>
       <key id="label" for="node" attr.name="label" attr.type="string" />
       <xsl:if test="//tcf:graph/tcf:nodes/tcf:node[@class]">
         <key id="class" for="node" attr.name="class" attr.type="string" />
+      </xsl:if>
+      <xsl:if test="//tcf:graph/tcf:nodes/tcf:node[@type]">
+        <key id="type" for="node" attr.name="type" attr.type="boolean" />
       </xsl:if>
       <xsl:if test="//tcf:graph/tcf:edges/tcf:edge[@label]">
         <key id="weight" for="edge" attr.name="label" attr.type="string" />
@@ -39,6 +42,9 @@
       <data key="label"><xsl:value-of select="." /></data>
       <xsl:if test="@class">
         <data key="class"><xsl:value-of select="@class" /></data>
+      </xsl:if>
+      <xsl:if test="@type">
+        <data key="type"><xsl:value-of select="@type" /></data>
       </xsl:if>
     </node>
   </xsl:template>

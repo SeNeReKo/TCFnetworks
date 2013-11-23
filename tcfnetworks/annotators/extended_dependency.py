@@ -99,7 +99,7 @@ class DependencyWorker(AddingWorker):
         for a, b in self.find_edges(parse, parse.root):
             # Find or add nodes
             vertices = []
-            for token_id in a, b:
+            for i, token_id in enumerate((a, b)):
                 token = self.corpus.find_token(token_id)
                 vertex_label = str(getattr(token, self.options.label))
                 try:
@@ -108,6 +108,12 @@ class DependencyWorker(AddingWorker):
                     parse_graph.add_vertex(name=vertex_label,
                                            tokenIDs=[token.get('ID')])
                     vertex = parse_graph.vs.find(vertex_label)
+                    if self.options.edges == 'verbs_nouns':
+                        # We have a bipartite graph. Since i enumerates
+                        # source and target, it is 0 or 1. Since the verb
+                        # is always source, we can use the boolean value of i
+                        # to specify the type.
+                        vertex['type'] = bool(i)
                 else:
                     if not token.get('ID') in vertex['tokenIDs']:
                         vertex['tokenIDs'].append(token.get('ID'))
