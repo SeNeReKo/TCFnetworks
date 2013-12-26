@@ -43,7 +43,7 @@ ADVERB = ISOcat['adverb']
 class DependencyWorker(AddingWorker):
 
     __options__ = {
-        'nodes': 'semantic',
+        'nodes': 'lexical',
         'label': 'semantic_unit',
         'edges': 'dependency',
         'distance': 1,
@@ -158,6 +158,7 @@ class DependencyWorker(AddingWorker):
             # edge exists, increment weight
             edge['weight'] += 1
         # TODO: Add edge instances
+        # TODO: Allow multi-edges (take label into account)
 
     def test_token(self):
         logging.warn('No token test method set.')
@@ -179,7 +180,18 @@ class DependencyWorker(AddingWorker):
             return False
         return self.test_token_stopwords(token)
 
+    def test_token_lexical(self, token):
+        if not token.postag.is_closed and not token.postag.is_a(ADVERB):
+            return self.test_token_stopwords(token)
+        if token.named_entity is not None:
+            return True
+        if token.reference is not None:
+            return True
+        return False
+
     def test_token_semantic(self, token):
+        if token.postag.is_a(VERB):
+            return True
         if not token.postag.is_closed and not token.postag.is_a(ADVERB):
             return self.test_token_stopwords(token)
         if token.named_entity is not None:
@@ -234,6 +246,35 @@ class DependencyWorker(AddingWorker):
         """
         head_token = self.corpus.find_token(head)
         dependents = list(self.find_dependents(parse, head))
+        # head-dependent edges
+        if self.test_token(head_token):
+            for dependent in dependents:
+                yield (head, dependent)
+        # search child edges
+        for dependent in dependents:
+            for dependent_edge in self.find_edges(
+                    parse, dependent):
+                yield dependent_edge
+
+    def find_edges_extended_dependency(self, parse, head):
+        """
+        Generator method to find edges based on a dependency parse.
+
+        The method determines if a token is included. If a dependency contains
+        an excluded token, the dependent's dependents are searched for tokens.
+        
+        This method extends dependency based relations by indirect relations
+        between the dependents of a verb.
+
+        :parameters:
+            - `parse`: A parse element.
+            - `head`: The ID of the head element.
+        :returns:
+            - yields pairs of (head, dependent) IDs.
+
+        """
+        head_token = self.corpus.find_token(head)
+        dependents = list(self.find_dependents(parse, head))
         # Store to avoid duplicate test.
         token_is_valid = self.test_token(head_token)
         # head-dependent edges
@@ -258,6 +299,49 @@ class DependencyWorker(AddingWorker):
                     for combination in combinations(depdeps, 2):
                         if not combination in dep_combinations:
                             yield combination
+        # search child edges
+        for dependent in dependents:
+            for dependent_edge in self.find_edges(
+                    parse, dependent):
+                yield dependent_edge
+
+    def find_edges_semantic(self, parse, head):
+        """
+        Generator method to find edges based on a dependency parse.
+        
+        In this method, verbs are excluded as nodes, but used to find edges.
+        It is advised to use the token method `semantic`, as it includes all
+        verbs, even closed verb forms.
+
+        The method determines if a token is included. If a dependency contains
+        an excluded token, the dependent's dependents are searched for tokens.
+
+        :parameters:
+            - `parse`: A parse element.
+            - `head`: The ID of the head element.
+        :returns:
+            - yields pairs of (head, dependent) IDs.
+
+        """
+        head_token = self.corpus.find_token(head)
+        dependents = list(self.find_dependents(parse, head))
+        nonverb_dependents = []
+        for dependent in dependents:
+            dep_token = self.corpus.find_token(dependent)
+            if not dep_token.postag.is_a(VERB):
+                nonverb_dependents.append(dependent)
+        # Store to avoid duplicate test.
+        token_is_valid = self.test_token(head_token)
+        # head-dependent edges
+        if token_is_valid and not head_token.postag.is_a(VERB):
+            for dependent in nonverb_dependents:
+                yield (head, dependent)
+                # TODO: Add relation as edge label
+        # dependent-dependent edges
+        else:
+            for combination in combinations(nonverb_dependents, 2):
+                yield combination
+                # TODO: Add verbs as edge label
         # search child edges
         for dependent in dependents:
             for dependent_edge in self.find_edges(

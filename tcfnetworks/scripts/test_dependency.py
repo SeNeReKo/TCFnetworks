@@ -38,8 +38,9 @@ class ComparingWorker(DependencyWorker):
         list({
         'first': 1,
         'number': 5,
-        'methods': ['dependency', 'nonclosed_lemma', 'nonclosed_semantic',
-                    'nonclosed_semantic_extended'],
+        'methods': ['dependency_tree',
+                    'lexical:dependency:lemma',
+                    'semantic:semantic:semantic_unit'],
         'output': ['svg', 'graphml']
     }.items()))
 
@@ -53,13 +54,16 @@ class ComparingWorker(DependencyWorker):
                 start=self.options.first,
                 end=self.options.first + self.options.number,
                 namespaces=tcf.NS), start=1):
-            for graph, layout_method, label in self.iter_graphs(parse):
+            for method, graph in self.iter_graphs(parse):
                 # Easiest way to get the graph into iGraph: save it as GraphML
                 # and load it.
-                if label == 'dependency':
+                if method == 'dependency_tree':
                     graph = tcf_to_graph(graph)
+                    layout_method = 'tree'
                 else:
                     graph.vs['label'] = graph.vs['name']
+                    layout_method = 'kamada_kawai'
+                label = method.replace(':', '_')
                 filebase = os.path.join(outdir, '{count:03d}_{label}'.format(
                                                 count=i, label=label))
                 if 'graphml' in self.options.output:
@@ -78,26 +82,13 @@ class ComparingWorker(DependencyWorker):
                                 vertex_frame_color='#fff', label_size=14)
 
     def iter_graphs(self, parse):
-        if 'dependency' in self.options.methods:
-            yield (self.parse_to_tree(parse), 'tree', 'dependency')
-        self.options.nodes = 'full'
-        self.options.label = 'lemma'
-        self.options.distance = 1
-        if 'full_lemma' in self.options.methods:
-            yield (self.parse_to_graph(parse), 'kamada_kawai', 'full_lemma')
-        self.options.nodes = 'nonclosed'
-        if 'nonclosed_lemma' in self.options.methods:
-            yield (self.parse_to_graph(parse), 'kamada_kawai',
-                   'nonclosed_lemma')
-        self.options.nodes = 'semantic'
-        self.options.label = 'semantic_unit'
-        if 'nonclosed_semantic' in self.options.methods:
-            yield (self.parse_to_graph(parse), 'kamada_kawai',
-                   'nonclosed_semantic')
-        self.options.distance = 2
-        if 'nonclosed_semantic_extended' in self.options.methods:
-            yield (self.parse_to_graph(parse), 'kamada_kawai',
-                   'nonclosed_semantic_extended')
+        for method in self.options.methods:
+            if method == 'dependency_tree':
+                yield (method, self.parse_to_tree(parse))
+                continue
+            self.options.nodes, self.options.edges, self.options.label = \
+                    method.split(':')
+            yield (method, self.parse_to_graph(parse))
 
     def parse_to_tree(self, parse):
         graph = tcf.Element(tcf.P_TEXT + 'graph')
