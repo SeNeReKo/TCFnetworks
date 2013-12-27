@@ -57,6 +57,46 @@ class CooccurrenceWorker(TokenTestingWorker):
                 len(graph.find(tcf.P_TEXT + 'edges'))))
         self.corpus.append(graph)
 
+    def get_unique_tokens(self, tokens):
+        unique_tokens = []
+        for token in tokens:
+            if self.test_token(token):
+                # Skip empty labels.
+                if not str(getattr(token, self.options.label)):
+                    continue
+                # Skip entity tokens other than the first one.
+                entity = token.named_entity
+                if entity is not None:
+                    if entity.get_value_list('tokenIDs')[0] != token.get('ID'):
+                        continue
+                unique_tokens.append(token)
+        return unique_tokens
+
+    def find_or_add_node(self, graph, token):
+        nodes = graph.find(tcf.P_TEXT + 'nodes')
+        label = str(getattr(token, self.options.label))
+        node = nodes.find_node(label)
+        if node is None:
+            node = nodes.add_node(label)
+        return node
+
+    def add_or_increment_edge(self, graph, source_token, target_token):
+        edges = graph.find(tcf.P_TEXT + 'edges')
+        source_node, target_node = [self.find_or_add_node(graph, token)
+                                      for token in (source_token, target_token)]
+        # Prevent loops
+        if source_node == target_node:
+            return
+        edge = edges.find_edge(source_node.get('ID'), target_node.get('ID'))
+        if edge is None:
+            # add edge
+            edge = edges.add_edge(source_node.get('ID'), target_node.get('ID'),
+                                  weight='1')
+        else:
+            # edge exists, increment weight
+            edge.set('weight', str(int(edge.get('weight')) + 1))
+        # TODO: Add edge instances
+
     def build_graph(self):
         logging.warn('No graph building method set.')
 
@@ -72,16 +112,7 @@ class CooccurrenceWorker(TokenTestingWorker):
         
         """
         # TODO: Take paragraphs into account.
-        tokens = []
-        for token in self.corpus.tokens:
-            if self.test_token(token):
-                entity = token.named_entity
-                if entity is not None:
-                    # We only want an entity once, so we only use the first token
-                    # of an entity.
-                    if entity.get_value_list('tokenIDs')[0] != token.get('ID'):
-                        continue
-                tokens.append(token)
+        tokens = self.get_unique_tokens(self.corpus.tokens)
         graph = None
         for gap in self.options.gap:
             logging.info('Building network with gap {}.'.format(gap))
@@ -108,32 +139,25 @@ class CooccurrenceWorker(TokenTestingWorker):
         else:
             nodes = graph.find(tcf.P_TEXT + 'nodes')
             edges = graph.find(tcf.P_TEXT + 'edges')
-        # test if words are already nodes in the graph
-        for token in tokens:
-            semantic_unit = token.semantic_unit
-            node = nodes.find_node(str(semantic_unit))
-            if node is None:
-                node = nodes.add_node(str(semantic_unit))
-                if semantic_unit.tag == tcf.P_TEXT + 'lemma':
-                    node.set('class', 'lemma')
-                elif semantic_unit.tag == tcf.P_TEXT + 'entity':
-                    node.set('class', semantic_unit.get('class'))
-            node.get_value_list('tokenIDs').append(token.get('ID'))
         for i in range(len(tokens) - (gap - 1)):
             # try all combinations of words within gap
             for a, b in combinations(tokens[i:i + gap], 2):
-                # add edge or increment weight
-                node_a = nodes.find_node(a.semantic_unit)
-                node_b = nodes.find_node(b.semantic_unit)
-                edge = edges.find_edge(node_a.get('ID'), node_b.get('ID'))
-                if edge is None:
-                    # add edge
-                    edge = edges.add_edge(node_a.get('ID'), node_b.get('ID'),
-                                          weight='1')
-                else:
-                    # edge exists, increment weight
-                    edge.set('weight', str(int(edge.get('weight')) + 1))
-                # TODO: Add edge instances
+                self.add_or_increment_edge(graph, a, b)
+        return graph
+
+    def build_graph_paragraph(self):
+        graph = tcf.Element(tcf.P_TEXT + 'graph')
+        nodes = tcf.SubElement(graph, tcf.P_TEXT + 'nodes')
+        edges = tcf.SubElement(graph, tcf.P_TEXT + 'edges')
+        paragraphs = self.corpus.xpath('//text:textspan[@type = "paragraph"]',
+                                       namespaces=tcf.NS)
+        for i, par in enumerate(paragraphs):
+            logging.debug('Creating network for paragraph {}/{}.'.format(
+                          i, len(paragraphs)))
+            tokens = self.get_unique_tokens(par.tokens)
+            logging.debug('Using {} tokens.'.format(len(tokens)))
+            for a, b in combinations(tokens, 2):
+                self.add_or_increment_edge(graph, a, b)
         return graph
 
 if __name__ == '__main__':
