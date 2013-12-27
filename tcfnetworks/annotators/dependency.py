@@ -22,118 +22,131 @@ This annotator implements dependency networks as a TCF compatible service.
 """
 
 import sys
+import os
 import logging
 from itertools import combinations
 
+import igraph
 from tcflib import tcf
-from tcflib.service import AddingWorker, run_as_cli
+from tcflib.service import run_as_cli
 from tcflib.tagsets import TagSet
+
+from tcfnetworks.utils import graph_to_tcf, merge_graphs
+
+from base import TokenTestingWorker
+
 ISOcat = TagSet('DC-1345')
 PUNCT = ISOcat['punctuation']
+NOUN = ISOcat['noun']
+VERB = ISOcat['verb']
+ADVERB = ISOcat['adverb']
 
 
-class DependencyWorker(AddingWorker):
+class DependencyWorker(TokenTestingWorker):
 
-    __options__ = {
-        'method': 'semantic',
-        'label': 'semantic_unit',
-    }
+    __options__ = TokenTestingWorker.__options__.copy()
+    __options__.update({
+        'edges': 'dependency',
+        'distance': 1,
+    })
+
+    def __init__(self, input_data, **options):
+        super().__init__(input_data, **options)
+        try:
+            self.find_edges = getattr(self,
+                    'find_edges_{}'.format(self.options.edges))
+            if self.options.edges == 'verbs_nouns':
+                self.test_token = lambda token: token.postag.is_a(VERB)
+        except AttributeError:
+            logging.error('Method "{}" is not supported.'.format(
+                    self.options.edges))
+            sys.exit(-1)
 
     def add_annotations(self):
+        # Create igraph.Graph.
         graph = None
         for parse in self.corpus.xpath('text:depparsing/text:parse',
                                        namespaces=tcf.NS):
             graph = self.parse_to_graph(parse, graph=graph)
+        # Convert igraph.Graph to TCF graph.
+        graph = graph_to_tcf(graph)
+        # Save
         logging.info('Graph has {} nodes and {} edges.'.format(
                 len(graph.find(tcf.P_TEXT + 'nodes')),
                 len(graph.find(tcf.P_TEXT + 'edges'))))
         self.corpus.append(graph)
 
     def parse_to_graph(self, parse, graph=None):
-        # Create graph or append to given graph.
-        if graph == None:
-            graph = tcf.Element(tcf.P_TEXT + 'graph')
-            nodes = tcf.SubElement(graph, tcf.P_TEXT + 'nodes')
-            edges = tcf.SubElement(graph, tcf.P_TEXT + 'edges')
-        else:
-            nodes = graph.find(tcf.P_TEXT + 'nodes')
-            edges = graph.find(tcf.P_TEXT + 'edges')
+        parse_graph = igraph.Graph()
         # Add edges
-        try:
-            self.test_token = getattr(self,
-                    'test_token_{}'.format(self.options.method))
-        except AttributeError:
-            logging.error('Method "{}" is not supported.'.format(
-                    self.options.method))
-            sys.exit(-1)
         for a, b in self.find_edges(parse, parse.root):
             # Find or add nodes
-            edgenodes = []
-            for token_id in a, b:
+            vertices = []
+            for i, token_id in enumerate((a, b)):
                 token = self.corpus.find_token(token_id)
-                node_label = getattr(token, self.options.label)
-                node = nodes.find_node(node_label)
-                if node is None:
-                    node = nodes.add_node(node_label)
-                node.get_value_set('tokenIDs').add(token.get('ID'))
-                edgenodes.append(node)
-            # add edge or increment weight
-            if edgenodes[0] == edgenodes[1]:
-                # Loop, skip this edge.
-                # Loops stem from multi-token named entities.
-                continue
-            edge = edges.find_edge(edgenodes[0].get('ID'),
-                                   edgenodes[1].get('ID'))
-            if edge is None:
-                # add edge
-                edge = edges.add_edge(edgenodes[0].get('ID'),
-                                      edgenodes[1].get('ID'),
-                                      weight='1')
-            else:
-                # edge exists, increment weight
-                edge.set('weight', str(int(edge.get('weight')) + 1))
-            # TODO: Add edge instances
-        return graph
+                vertex_label = str(getattr(token, self.options.label))
+                try:
+                    vertex = parse_graph.vs.find(vertex_label)
+                except ValueError:
+                    parse_graph.add_vertex(name=vertex_label,
+                                           tokenIDs=[token.get('ID')])
+                    vertex = parse_graph.vs.find(vertex_label)
+                    if self.options.edges == 'verbs_nouns':
+                        # We have a bipartite graph. Since i enumerates
+                        # source and target, it is 0 or 1. Since the verb
+                        # is always source, we can use the boolean value of i
+                        # to specify the type.
+                        vertex['type'] = bool(i)
+                else:
+                    if not token.get('ID') in vertex['tokenIDs']:
+                        vertex['tokenIDs'].append(token.get('ID'))
+                vertices.append(vertex)
+            # Add or increment edges
+            self.add_or_increment_edge(parse_graph, *vertices)
+        if self.options.distance > 1:
+            # Add additional edges for each pair of nodes with path length <
+            # distance.
+            # Do not alter the graph while iteration. Store additional edges.
+            additional_edges = []
+            for source, target in combinations(parse_graph.vs, 2):
+                distance = parse_graph.shortest_paths(source, target)[0][0]
+                if distance <= self.options.distance:
+                    additional_edges.append((source, target))
+            # Now add additional edges.
+            for source, target in additional_edges:
+                self.add_or_increment_edge(parse_graph, source, target)
+        # Create graph or append to given graph.
+        if graph == None:
+            return parse_graph
+        else:
+            return merge_graphs(graph, parse_graph)
 
-    def test_token(self):
-        logging.warn('No token test method set.')
-
-    def test_token_full(self, token):
-        return not token.postag.is_a(PUNCT)
-
-    def test_token_nonclosed(self, token):
-        return not token.postag.is_closed
-
-    def test_token_semantic(self, token):
-        if not token.postag.is_closed:
-            return True
-        if token.named_entity is not None:
-            return True
-        if token.reference is not None:
-            return True
-        return False
-
-    def test_token_entity(self, token, resolve=True):
-        if token.named_entity is not None:
-            return True
-        if resolve and token.reference is not None:
-            for reftoken in token.reference.tokens:
-                if self.test_token_entity(reftoken, False):
-                    return True
-        return False
-
-    def test_token_actor(self, token, resolve=True):
-        if token.named_entity is not None:
-            if token.named_entity.get('class') in ('PER', 'ORG'):
-                # FIXME: Use proper tags instead of hardcoded CoNLL2002 tags.
-                return True
-        if resolve and token.reference is not None:
-            for reftoken in token.reference.tokens:
-                if self.test_token_actor(reftoken, False):
-                    return True
-        return False
+    def add_or_increment_edge(self, graph, source, target):
+        """Add edge to graph or increment weight."""
+        if isinstance(source, igraph.Vertex):
+            source = source.index
+        if isinstance(target, igraph.Vertex):
+            target = target.index
+        if source == target:
+            # Loop, skip this edge.
+            # Loops stem from multi-token named entities.
+            return
+        try:
+            edge_id = graph.get_eid(source, target)
+            edge = graph.es[edge_id]
+        except igraph.InternalError:
+            # Edge does not exist, create
+            graph.add_edge(source, target, weight=1)
+        else:
+            # edge exists, increment weight
+            edge['weight'] += 1
+        # TODO: Add edge instances
+        # TODO: Allow multi-edges (take label into account)
 
     def find_edges(self, parse, head):
+        logging.warn('No edge detection method set.')
+
+    def find_edges_dependency(self, parse, head):
         """
         Generator method to find edges based on a dependency parse.
 
@@ -148,35 +161,144 @@ class DependencyWorker(AddingWorker):
 
         """
         head_token = self.corpus.find_token(head)
+        dependents = list(self.find_dependents(parse, head))
+        # head-dependent edges
         if self.test_token(head_token):
-            for dependent in self.find_dependents(parse, head):
-                yield (head, dependent)
-                # Recursively get the nonclosed edges where the dependent is
-                # the head.
-                for dependent_edge in self.find_edges(
-                        parse, dependent):
-                    yield dependent_edge
-        else:
-            # Since we have no nonclosed head, we use direct edges between all
-            # nonclosed dependents of head, and then go from there.
-            dependents = list(self.find_dependents(parse, head))
-            for combination in combinations(dependents, 2):
-                yield combination
             for dependent in dependents:
-                for dependent_edge in self.find_edges(
-                        parse, dependent):
-                    yield dependent_edge
+                yield (head, dependent)
+        # search child edges
+        for dependent in dependents:
+            for dependent_edge in self.find_edges(
+                    parse, dependent):
+                yield dependent_edge
 
-    def find_dependents(self, parse, head):
+    def find_edges_extended_dependency(self, parse, head):
         """
-        Generator method that returns all filtered dependents of a given head.
+        Generator method to find edges based on a dependency parse.
 
-        If the direct dependents of a head are filtered out, it looks for
-        their dependents until it finds valid ones.
+        The method determines if a token is included. If a dependency contains
+        an excluded token, the dependent's dependents are searched for tokens.
+        
+        This method extends dependency based relations by indirect relations
+        between the dependents of a verb.
 
         :parameters:
             - `parse`: A parse element.
             - `head`: The ID of the head element.
+        :returns:
+            - yields pairs of (head, dependent) IDs.
+
+        """
+        head_token = self.corpus.find_token(head)
+        dependents = list(self.find_dependents(parse, head))
+        # Store to avoid duplicate test.
+        token_is_valid = self.test_token(head_token)
+        # head-dependent edges
+        if token_is_valid:
+            for dependent in dependents:
+                yield (head, dependent)
+        # dependent-dependent edges
+        dep_combinations = ()
+        if not token_is_valid or head_token.postag.is_a(VERB):
+            dep_combinations = list(combinations(dependents, 2))
+            for combination in dep_combinations:
+                yield combination
+        # Search dependents for invalid verbs (like copula). They are
+        # particularly relevant for edges (think of "be"), but they get lost
+        # when only handling valid dependents. We relate their dependents
+        # explicitly.
+        for dependent in parse.find_dependents(head):
+            if dependent not in dependents:
+                dep_token = self.corpus.find_token(dependent)
+                if dep_token.postag.is_a(VERB):
+                    depdeps = self.find_dependents(parse, dependent, False)
+                    for combination in combinations(depdeps, 2):
+                        if not combination in dep_combinations:
+                            yield combination
+        # search child edges
+        for dependent in dependents:
+            for dependent_edge in self.find_edges(
+                    parse, dependent):
+                yield dependent_edge
+
+    def find_edges_semantic(self, parse, head):
+        """
+        Generator method to find edges based on a dependency parse.
+        
+        In this method, verbs are excluded as nodes, but used to find edges.
+        It is advised to use the token method `semantic`, as it includes all
+        verbs, even closed verb forms.
+
+        The method determines if a token is included. If a dependency contains
+        an excluded token, the dependent's dependents are searched for tokens.
+
+        :parameters:
+            - `parse`: A parse element.
+            - `head`: The ID of the head element.
+        :returns:
+            - yields pairs of (head, dependent) IDs.
+
+        """
+        head_token = self.corpus.find_token(head)
+        dependents = list(self.find_dependents(parse, head))
+        nonverb_dependents = []
+        for dependent in dependents:
+            dep_token = self.corpus.find_token(dependent)
+            if not dep_token.postag.is_a(VERB):
+                nonverb_dependents.append(dependent)
+        # Store to avoid duplicate test.
+        token_is_valid = self.test_token(head_token)
+        # head-dependent edges
+        if token_is_valid and not head_token.postag.is_a(VERB):
+            for dependent in nonverb_dependents:
+                yield (head, dependent)
+                # TODO: Add relation as edge label
+        # dependent-dependent edges
+        else:
+            for combination in combinations(nonverb_dependents, 2):
+                yield combination
+                # TODO: Add verbs as edge label
+        # search child edges
+        for dependent in dependents:
+            for dependent_edge in self.find_edges(
+                    parse, dependent):
+                yield dependent_edge
+
+    def find_edges_verbs_nouns(self, parse, head):
+        """
+        Generator method to find edges based on verbs.
+
+        This method only links verbs and nouns.
+
+        :parameters:
+            - `parse`: A parse element.
+            - `head`: The ID of the head element.
+        :returns:
+            - yields pairs of (head, dependent) IDs.
+
+        """
+        head_token = self.corpus.find_token(head)
+        if head_token.postag.is_a(VERB):
+            for dependent in parse.find_dependents(head):
+                dep_token = self.corpus.find_token(dependent)
+                if dep_token.postag.is_a(NOUN):
+                    yield (head, dependent)
+        for dependent in self.find_dependents(parse, head):
+            for dependent_edge in self.find_edges(
+                    parse, dependent):
+                yield dependent_edge
+
+    def find_dependents(self, parse, head, descend=True):
+        """
+        Generator method that returns all filtered dependents of a given head.
+
+        If the direct dependents of a head are filtered out and `descend` is
+        True, it looks for their dependents until it finds valid ones.
+
+        :parameters:
+            - `parse`: A parse element.
+            - `head`: The ID of the head element.
+            - `descend`: Descend the parse tree to find valid tokens.
         :returns:
             - yields dependent's IDs.
 
@@ -185,7 +307,7 @@ class DependencyWorker(AddingWorker):
             dependent_token = self.corpus.find_token(dependent)
             if self.test_token(dependent_token):
                 yield dependent
-            else:
+            elif descend:
                 for dependent2 in self.find_dependents(parse, dependent):
                     yield dependent2
 
