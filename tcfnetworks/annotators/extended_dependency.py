@@ -28,10 +28,12 @@ from itertools import combinations
 
 import igraph
 from tcflib import tcf
-from tcflib.service import AddingWorker, run_as_cli
+from tcflib.service import run_as_cli
 from tcflib.tagsets import TagSet
 
 from tcfnetworks.utils import graph_to_tcf, merge_graphs
+
+from base import TokenTestingWorker
 
 ISOcat = TagSet('DC-1345')
 PUNCT = ISOcat['punctuation']
@@ -40,15 +42,25 @@ VERB = ISOcat['verb']
 ADVERB = ISOcat['adverb']
 
 
-class DependencyWorker(AddingWorker):
+class DependencyWorker(TokenTestingWorker):
 
-    __options__ = {
-        'nodes': 'lexical',
-        'label': 'semantic_unit',
+    __options__ = TokenTestingWorker.__options__.copy()
+    __options__.update({
         'edges': 'dependency',
         'distance': 1,
-        'stopwords': '',
-    }
+    })
+
+    def __init__(self, input_data, **options):
+        super().__init__(input_data, **options)
+        try:
+            self.find_edges = getattr(self,
+                    'find_edges_{}'.format(self.options.edges))
+            if self.options.edges == 'verbs_nouns':
+                self.test_token = lambda token: token.postag.is_a(VERB)
+        except AttributeError:
+            logging.error('Method "{}" is not supported.'.format(
+                    self.options.edges))
+            sys.exit(-1)
 
     def add_annotations(self):
         # Create igraph.Graph.
@@ -66,35 +78,6 @@ class DependencyWorker(AddingWorker):
 
     def parse_to_graph(self, parse, graph=None):
         parse_graph = igraph.Graph()
-        # Set up filtering
-        if self.options.stopwords:
-            stopwordspath = os.path.join(os.path.dirname(__file__),
-                                         'data', 'stopwords',
-                                         self.options.stopwords)
-            try:
-                with open(stopwordspath) as stopwordsfile:
-                    self.stopwords = [token.strip() for token
-                                      in stopwordsfile.readlines() if token]
-            except FileNotFoundError:
-                logging.error('No stopwords list "{}".'.format(
-                        self.options.stopwords))
-                sys.exit(-1)
-        try:
-            self.test_token = getattr(self,
-                    'test_token_{}'.format(self.options.nodes))
-        except AttributeError:
-            logging.error('Method "{}" is not supported.'.format(
-                    self.options.nodes))
-            sys.exit(-1)
-        try:
-            self.find_edges = getattr(self,
-                    'find_edges_{}'.format(self.options.edges))
-            if self.options.edges == 'verbs_nouns':
-                self.test_token = lambda token: token.postag.is_a(VERB)
-        except AttributeError:
-            logging.error('Method "{}" is not supported.'.format(
-                    self.options.edges))
-            sys.exit(-1)
         # Add edges
         for a, b in self.find_edges(parse, parse.root):
             # Find or add nodes
@@ -159,73 +142,6 @@ class DependencyWorker(AddingWorker):
             edge['weight'] += 1
         # TODO: Add edge instances
         # TODO: Allow multi-edges (take label into account)
-
-    def test_token(self):
-        logging.warn('No token test method set.')
-
-    def test_token_stopwords(self, token):
-        if self.options.stopwords:
-            token_label = str(getattr(token, self.options.label))
-            if token_label in self.stopwords:
-                return False
-        return True
-
-    def test_token_full(self, token):
-        if token.postag.is_a(PUNCT):
-            return False
-        return self.test_token_stopwords(token)
-
-    def test_token_nonclosed(self, token):
-        if token.postag.is_closed:
-            return False
-        return self.test_token_stopwords(token)
-
-    def test_token_lexical(self, token):
-        if not token.postag.is_closed and not token.postag.is_a(ADVERB):
-            return self.test_token_stopwords(token)
-        if token.named_entity is not None:
-            return True
-        if token.reference is not None:
-            return True
-        return False
-
-    def test_token_semantic(self, token):
-        if token.postag.is_a(VERB):
-            return True
-        if not token.postag.is_closed and not token.postag.is_a(ADVERB):
-            return self.test_token_stopwords(token)
-        if token.named_entity is not None:
-            return True
-        if token.reference is not None:
-            return True
-        return False
-
-    def test_token_concept(self, token):
-        if not self.test_token_semantic(token):
-            return False
-        if token.postag.is_a(VERB):
-            return False
-        return True
-
-    def test_token_entity(self, token, resolve=True):
-        if token.named_entity is not None:
-            return True
-        if resolve and token.reference is not None:
-            for reftoken in token.reference.tokens:
-                if self.test_token_entity(reftoken, False):
-                    return True
-        return False
-
-    def test_token_actor(self, token, resolve=True):
-        if token.named_entity is not None:
-            if token.named_entity.get('class') in ('PER', 'ORG'):
-                # FIXME: Use proper tags instead of hardcoded CoNLL2002 tags.
-                return True
-        if resolve and token.reference is not None:
-            for reftoken in token.reference.tokens:
-                if self.test_token_actor(reftoken, False):
-                    return True
-        return False
 
     def find_edges(self, parse, head):
         logging.warn('No edge detection method set.')
