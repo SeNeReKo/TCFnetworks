@@ -116,6 +116,11 @@ class TokenTestingWorker(AddingWorker):
             return False
         return True
 
+    def test_token_noun(self, token):
+        if token.postag.is_a(NOUN) or self.test_token_entity(token):
+            return self.test_token_stopwords(token)
+        return False
+
     def test_token_entity(self, token, resolve=True):
         if token.named_entity is not None:
             return True
