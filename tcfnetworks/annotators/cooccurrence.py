@@ -19,11 +19,6 @@
 """
 This annotator implements cooccurrence networks as a TCF compatible service.
 
-This implementation is based on the method and algorithm described in:
-Paranyushkin, Dmitry. 2011. „Identifying the Pathways for Meaning Circulation
-using Text Network Analysis“. Nodus Labs. <http://noduslabs.com/research/
-pathways-meaning-circulation-text-network-analysis/>.
-
 """
 
 import sys
@@ -32,53 +27,68 @@ import logging
 from itertools import combinations
 
 from tcflib import tcf
-from tcflib.service import AddingWorker, run_as_cli
+from tcflib.service import run_as_cli
+
+from base import TokenTestingWorker
 
 
-class CooccurrenceWorker(AddingWorker):
+class CooccurrenceWorker(TokenTestingWorker):
 
-    __options__ = {
-        'stopwords': '',
-    }
+    __options__ = TokenTestingWorker.__options__.copy()
+    __options__.update({
+        'method': 'words',
+        'gap': [2, 5],
+    })
+
+    def __init__(self, input_data, **options):
+        super().__init__(input_data, **options)
+        try:
+            self.build_graph = getattr(self,
+                    'build_graph_{}'.format(self.options.method))
+        except AttributeError:
+            logging.error('Method "{}" is not supported.'.format(
+                    self.options.method))
+            sys.exit(-1)        
 
     def add_annotations(self):
-        if self.options.stopwords:
-            stopwordspath = os.path.join(os.path.dirname(__file__),
-                                         'data', 'stopwords',
-                                         self.options.stopwords)
-            try:
-                with open(stopwordspath) as stopwordsfile:
-                    stopwords = [token.strip() for token
-                                 in stopwordsfile.readlines() if token]
-            except FileNotFoundError:
-                logging.error('No stopwords list "{}".'.format(
-                        self.options.stopwords))
-                sys.exit(-1)
-        # TODO: Take paragraphs into account.
-        tokens = []
-        for token in self.corpus.tokens:
-            entity = token.named_entity
-            if entity is not None:
-                # We only want an entity once, so we only use the first token
-                # of an entity.
-                if entity.get_value_list('tokenIDs')[0] == token.get('ID'):
-                    # first token
-                    tokens.append(token)
-                else:
-                    continue
-            elif (self.options.stopwords and
-                    str(token.semantic_unit) not in stopwords):
-                 tokens.append(token)
-            elif not token.postag.is_closed:
-                tokens.append(token)
-        graph = self.build_graph(tokens, gap=2)
-        graph = self.build_graph(tokens, gap=5, graph=graph)
+        graph = self.build_graph()
         logging.info('Graph has {} nodes and {} edges.'.format(
                 len(graph.find(tcf.P_TEXT + 'nodes')),
                 len(graph.find(tcf.P_TEXT + 'edges'))))
         self.corpus.append(graph)
 
-    def build_graph(self, tokens, gap=2, graph=None):
+    def build_graph(self):
+        logging.warn('No graph building method set.')
+
+    def build_graph_words(self):
+        """
+        This method implements a word-gap based cooccurrence network.
+
+        This implementation is based on the method and algorithm described in:
+        Paranyushkin, Dmitry. 2011. „Identifying the Pathways for Meaning 
+        Circulation using Text Network Analysis“. Nodus Labs.
+        <http://noduslabs.com/research/
+        pathways-meaning-circulation-text-network-analysis/>.
+        
+        """
+        # TODO: Take paragraphs into account.
+        tokens = []
+        for token in self.corpus.tokens:
+            if self.test_token(token):
+                entity = token.named_entity
+                if entity is not None:
+                    # We only want an entity once, so we only use the first token
+                    # of an entity.
+                    if entity.get_value_list('tokenIDs')[0] != token.get('ID'):
+                        continue
+                tokens.append(token)
+        graph = None
+        for gap in self.options.gap:
+            logging.info('Building network with gap {}.'.format(gap))
+            graph = self.build_graph_words_real(tokens, gap, graph)
+        return graph
+
+    def build_graph_words_real(self, tokens, gap=2, graph=None):
         """
         This function does all the heavy-lifting of creating a graph from
         a list of words in a paragraph. It expects to get a list of tokens.
