@@ -37,6 +37,7 @@ class CooccurrenceWorker(TokenTestingWorker):
     __options__ = TokenTestingWorker.__options__.copy()
     __options__.update({
         'method': 'words',
+        'spantype': 'paragraph',
         'gap': [2, 5],
     })
 
@@ -145,15 +146,16 @@ class CooccurrenceWorker(TokenTestingWorker):
                 self.add_or_increment_edge(graph, a, b)
         return graph
 
-    def build_graph_paragraph(self):
+    def build_graph_textspan(self):
         graph = tcf.Element(tcf.P_TEXT + 'graph')
         nodes = tcf.SubElement(graph, tcf.P_TEXT + 'nodes')
         edges = tcf.SubElement(graph, tcf.P_TEXT + 'edges')
-        paragraphs = self.corpus.xpath('//text:textspan[@type = "paragraph"]',
+        textspans = self.corpus.xpath('//text:textspan[@type = $type]',
+                                       type=self.options.spantype,
                                        namespaces=tcf.NS)
-        for i, par in enumerate(paragraphs):
-            logging.debug('Creating network for paragraph {}/{}.'.format(
-                          i, len(paragraphs)))
+        for i, par in enumerate(textspans):
+            logging.debug('Creating network for textspan {}/{}.'.format(
+                          i, len(textspans)))
             tokens = self.get_unique_tokens(par.tokens)
             logging.debug('Using {} tokens.'.format(len(tokens)))
             for a, b in combinations(tokens, 2):
