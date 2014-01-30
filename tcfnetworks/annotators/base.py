@@ -27,13 +27,13 @@ for implementing workers.
 import sys
 import os
 import logging
+from types import MethodType
 
 from tcflib.service import AddingWorker
 from tcflib.tagsets import TagSet
 
 ISOcat = TagSet('DC-1345')
 PUNCT = ISOcat['punctuation']
-NOUN = ISOcat['noun']
 VERB = ISOcat['verb']
 ADVERB = ISOcat['adverb']
 
@@ -44,11 +44,12 @@ class TokenTestingWorker(AddingWorker):
         'nodes': 'lexical',
         'label': 'semantic_unit',
         'stopwords': '',
+        'postag': '',
     }
 
     def __init__(self, input_data, **options):
         super().__init__(input_data, **options)
-        # Set up filtering
+        # Set up stop-words
         if self.options.stopwords:
             stopwordspath = os.path.join(os.path.dirname(__file__),
                                          'data', 'stopwords',
@@ -61,13 +62,39 @@ class TokenTestingWorker(AddingWorker):
                 logging.error('No stopwords list "{}".'.format(
                         self.options.stopwords))
                 sys.exit(-1)
-        try:
-            self.test_token = getattr(self,
-                    'test_token_{}'.format(self.options.nodes))
-        except AttributeError:
-            logging.error('Method "{}" is not supported.'.format(
-                    self.options.nodes))
-            sys.exit(-1)
+        # Set up filtering.
+        # First, check hard-coded variants
+        if self.options.nodes == 'postag':
+            # The `postag` filter method allows to specify a PoS tag directly
+            # through the `postag` option, e.g.: --nodes postag --postag noun
+            if not self.options.postag:
+                logging.error('Method "postag" requires specifying option '
+                              '"postag" as well.')
+                sys.exit(-1)
+            try:
+                POS = ISOcat[self.options.postag]
+            except KeyError:
+                logging.error('No postag "{}" in tagset.'.format(
+                              self.options.postag))
+                sys.exit(-1)
+            def test_token_postag(self, token, resolve=True):
+                if token.postag.is_a(POS):
+                    return self.test_token_stopwords(token)
+                if resolve and token.reference is not None:
+                    for reftoken in token.reference.tokens:
+                        if test_token_postag(reftoken, False):
+                            return self.test_token_stopwords(reftoken)
+                return False
+            self.test_token = MethodType(test_token_postag, self)
+        # Then, check dynamic variants
+        else:
+            try:
+                self.test_token = getattr(self,
+                        'test_token_{}'.format(self.options.nodes))
+            except AttributeError:
+                logging.error('Method "{}" is not supported.'.format(
+                        self.options.nodes))
+                sys.exit(-1)
 
     def test_token(self):
         logging.warn('No token test method set.')
@@ -115,11 +142,6 @@ class TokenTestingWorker(AddingWorker):
         if token.postag.is_a(VERB):
             return False
         return True
-
-    def test_token_noun(self, token):
-        if token.postag.is_a(NOUN) or self.test_token_entity(token):
-            return self.test_token_stopwords(token)
-        return False
 
     def test_token_entity(self, token, resolve=True):
         if token.named_entity is not None:
