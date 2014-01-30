@@ -50,6 +50,7 @@ class CooccurrenceWorker(TokenTestingWorker):
             logging.error('Method "{}" is not supported.'.format(
                     self.options.method))
             sys.exit(-1)        
+        self.combinations = []
 
     def add_annotations(self):
         graph = self.build_graph()
@@ -81,7 +82,13 @@ class CooccurrenceWorker(TokenTestingWorker):
             node = nodes.add_node(label)
         return node
 
-    def add_or_increment_edge(self, graph, source_token, target_token):
+    def add_or_increment_edge(self, graph, source_token, target_token,
+                              unique=False):
+        if unique:
+            if (source_token, target_token) in self.combinations:
+                logging.debug('Combination already present, skip.')
+                return
+        self.combinations.append((source_token, target_token))
         edges = graph.find(tcf.P_TEXT + 'edges')
         source_node, target_node = [self.find_or_add_node(graph, token)
                                       for token in (source_token, target_token)]
@@ -159,7 +166,7 @@ class CooccurrenceWorker(TokenTestingWorker):
             tokens = self.get_unique_tokens(par.tokens)
             logging.debug('Using {} tokens.'.format(len(tokens)))
             for a, b in combinations(tokens, 2):
-                self.add_or_increment_edge(graph, a, b)
+                self.add_or_increment_edge(graph, a, b, unique=True)
         return graph
 
 if __name__ == '__main__':
