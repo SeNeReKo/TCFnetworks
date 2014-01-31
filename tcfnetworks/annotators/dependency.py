@@ -32,8 +32,7 @@ from tcflib.service import run_as_cli
 from tcflib.tagsets import TagSet
 
 from tcfnetworks.utils import graph_to_tcf, merge_graphs
-
-from base import TokenTestingWorker
+from tcfnetworks.annotators.base import TokenTestingWorker
 
 ISOcat = TagSet('DC-1345')
 PUNCT = ISOcat['punctuation']

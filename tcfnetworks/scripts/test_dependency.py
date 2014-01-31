@@ -27,7 +27,7 @@ import igraph
 from tcflib import tcf
 from tcflib.service import run_as_cli
 
-from tcfnetworks.annotators.extended_dependency import DependencyWorker
+from tcfnetworks.annotators.dependency import DependencyWorker
 from tcfnetworks.utils import tcf_to_graph
 
 
