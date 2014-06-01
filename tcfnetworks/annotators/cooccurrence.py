@@ -160,7 +160,7 @@ class CooccurrenceWorker(TokenTestingWorker):
         textspans = self.corpus.xpath('//text:textspan[@type = $type]',
                                        type=self.options.spantype,
                                        namespaces=tcf.NS)
-        for i, par in enumerate(textspans):
+        for i, par in enumerate(textspans, start=1):
             logging.debug('Creating network for textspan {}/{}.'.format(
                           i, len(textspans)))
             tokens = self.get_unique_tokens(par.tokens)
