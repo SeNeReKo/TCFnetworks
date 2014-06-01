@@ -44,7 +44,7 @@ class TokenTestingWorker(AddingWorker):
         'nodes': 'lexical',
         'label': 'semantic_unit',
         'stopwords': '',
-        'postag': '',
+        'postag': [''],
     }
 
     def __init__(self, input_data, **options):
@@ -67,18 +67,23 @@ class TokenTestingWorker(AddingWorker):
         if self.options.nodes == 'postag':
             # The `postag` filter method allows to specify a PoS tag directly
             # through the `postag` option, e.g.: --nodes postag --postag noun
-            if not self.options.postag:
+            if not self.options.postag or not self.options.postag[0]:
                 logging.error('Method "postag" requires specifying option '
                               '"postag" as well.')
                 sys.exit(-1)
             try:
-                POS = ISOcat[self.options.postag]
+                POS = [ISOcat[postag] for postag in self.options.postag]
             except KeyError:
                 logging.error('No postag "{}" in tagset.'.format(
                               self.options.postag))
                 sys.exit(-1)
             def test_token_postag(self, token, resolve=True):
-                if token.postag.is_a(POS):
+                has_pos = False
+                for postag in POS:
+                    if token.postag.is_a(postag):
+                        has_pos = True
+                        break
+                if has_pos:
                     return self.test_token_stopwords(token)
                 if resolve and token.reference is not None:
                     for reftoken in token.reference.tokens:
