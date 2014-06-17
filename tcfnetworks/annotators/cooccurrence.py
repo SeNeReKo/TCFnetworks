@@ -29,7 +29,7 @@ from itertools import combinations
 from tcflib import tcf
 from tcflib.service import run_as_cli
 
-from base import TokenTestingWorker
+from tcfnetworks.annotators.base import TokenTestingWorker
 
 
 class CooccurrenceWorker(TokenTestingWorker):
@@ -41,8 +41,8 @@ class CooccurrenceWorker(TokenTestingWorker):
         'gap': [2, 5],
     })
 
-    def __init__(self, input_data, **options):
-        super().__init__(input_data, **options)
+    def __init__(self, **options):
+        super().__init__(**options)
         try:
             self.build_graph = getattr(self,
                     'build_graph_{}'.format(self.options.method))

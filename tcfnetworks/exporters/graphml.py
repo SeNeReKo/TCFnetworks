@@ -30,8 +30,8 @@ from tcflib.service import ReplacingWorker, run_as_cli
 
 class GraphMLWorker(ReplacingWorker):
 
-    def run(self):
-        input_tree = etree.ElementTree(etree.fromstring(self.input_data,
+    def run(self, input_data):
+        input_tree = etree.ElementTree(etree.fromstring(input_data,
                                        parser=tcf.parser))
         xslt_file = os.path.join(os.path.dirname(__file__),
                                  'data', 'tcf2graphml.xsl')

@@ -49,8 +49,8 @@ class DependencyWorker(TokenTestingWorker):
         'distance': 1,
     })
 
-    def __init__(self, input_data, **options):
-        super().__init__(input_data, **options)
+    def __init__(self, **options):
+        super().__init__(**options)
         try:
             self.find_edges = getattr(self,
                     'find_edges_{}'.format(self.options.edges))
