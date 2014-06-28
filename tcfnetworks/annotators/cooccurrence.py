@@ -36,9 +36,9 @@ class CooccurrenceWorker(TokenTestingWorker):
 
     __options__ = TokenTestingWorker.__options__.copy()
     __options__.update({
-        'method': 'words',
+        'method': 'window',  # 'window', 'sentence' or 'textspan'
         'spantype': 'paragraph',
-        'gap': [2, 5],
+        'window': [2, 5],  # for method='window'
     })
 
     def __init__(self, **options):
@@ -49,15 +49,14 @@ class CooccurrenceWorker(TokenTestingWorker):
         except AttributeError:
             logging.error('Method "{}" is not supported.'.format(
                     self.options.method))
-            sys.exit(-1)        
-        self.combinations = []
+            sys.exit(-1)
 
     def add_annotations(self):
         graph = self.build_graph()
         logging.info('Graph has {} nodes and {} edges.'.format(
-                len(graph.find(tcf.P_TEXT + 'nodes')),
-                len(graph.find(tcf.P_TEXT + 'edges'))))
-        self.corpus.append(graph)
+                len(graph.nodes),
+                len(graph.edges)))
+        self.corpus.graph = graph
 
     def get_unique_tokens(self, tokens):
         unique_tokens = []
@@ -108,33 +107,33 @@ class CooccurrenceWorker(TokenTestingWorker):
     def build_graph(self):
         logging.warn('No graph building method set.')
 
-    def build_graph_words(self):
+    def build_graph_window(self):
         """
-        This method implements a word-gap based cooccurrence network.
+        This method implements a word-window based cooccurrence network.
 
         This implementation is based on the method and algorithm described in:
         Paranyushkin, Dmitry. 2011. „Identifying the Pathways for Meaning 
         Circulation using Text Network Analysis“. Nodus Labs.
         <http://noduslabs.com/research/
         pathways-meaning-circulation-text-network-analysis/>.
-        
+
         """
         # TODO: Take paragraphs into account.
         tokens = self.get_unique_tokens(self.corpus.tokens)
         graph = None
-        for gap in self.options.gap:
-            logging.info('Building network with gap {}.'.format(gap))
-            graph = self.build_graph_words_real(tokens, gap, graph)
+        for window in self.options.window:
+            logging.info('Building network with window {}.'.format(window))
+            graph = self.build_graph_window_real(tokens, window, graph)
         return graph
 
-    def build_graph_words_real(self, tokens, gap=2, graph=None):
+    def build_graph_window_real(self, tokens, window=2, graph=None):
         """
         This function does all the heavy-lifting of creating a graph from
         a list of words in a paragraph. It expects to get a list of tokens.
 
         :parameters:
             - `tokens`: A list of tokens.
-            - `gap`: The word gap for detecting edges.
+            - `window`: The word window for detecting edges.
             - `graph`: A graph node to which the edges will be added.
         :returns:
             - The graph node.
@@ -147,26 +146,34 @@ class CooccurrenceWorker(TokenTestingWorker):
         else:
             nodes = graph.find(tcf.P_TEXT + 'nodes')
             edges = graph.find(tcf.P_TEXT + 'edges')
-        for i in range(len(tokens) - (gap - 1)):
-            # try all combinations of words within gap
-            for a, b in combinations(tokens[i:i + gap], 2):
+        for i in range(len(tokens) - (window - 1)):
+            # try all combinations of words within window
+            for a, b in combinations(tokens[i:i + window], 2):
                 self.add_or_increment_edge(graph, a, b)
         return graph
 
     def build_graph_textspan(self):
-        graph = tcf.Element(tcf.P_TEXT + 'graph')
-        nodes = tcf.SubElement(graph, tcf.P_TEXT + 'nodes')
-        edges = tcf.SubElement(graph, tcf.P_TEXT + 'edges')
-        textspans = self.corpus.xpath('//text:textspan[@type = $type]',
-                                       type=self.options.spantype,
-                                       namespaces=tcf.NS)
-        for i, par in enumerate(textspans, start=1):
-            logging.debug('Creating network for textspan {}/{}.'.format(
-                          i, len(textspans)))
-            tokens = self.get_unique_tokens(par.tokens)
+        graph = tcf.Graph()
+        textspans = [span for span in self.corpus.textstructure
+                     if span.type == self.options.spantype]
+        n = len(textspans)
+        for i, span in enumerate(textspans, start=1):
+            logging.debug('Creating network for textspan {}/{}.'.format(i, n))
+            tokens = set([token for token in span.tokens
+                          if self.test_token(token)])
             logging.debug('Using {} tokens.'.format(len(tokens)))
-            for a, b in combinations(tokens, 2):
-                self.add_or_increment_edge(graph, a, b, unique=True)
+            for token in tokens:
+                name = getattr(token, self.options.label)
+                node = graph.node(name)
+                if node is None:
+                    node = graph.add_node(name, tokenIDs=[token.id])
+                else:
+                    if not token.id in node['tokenIDs']:
+                        node['tokenIDs'].append(token.id)
+            for combo in combinations(tokens, 2):
+                names = [getattr(token, self.options.label)
+                         for token in combo]
+                graph.add_edge(*names)
         return graph
 
 if __name__ == '__main__':
