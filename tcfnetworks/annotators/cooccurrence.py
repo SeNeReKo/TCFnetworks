@@ -39,6 +39,7 @@ class CooccurrenceWorker(TokenTestingWorker):
         'method': 'window',  # 'window', 'sentence' or 'textspan'
         'spantype': 'paragraph',
         'window': [2, 5],  # for method='window'
+        'weight': 'count',  # 'count' or 'loglikelihood'
     })
 
     def __init__(self, **options):
@@ -153,7 +154,7 @@ class CooccurrenceWorker(TokenTestingWorker):
         return graph
 
     def build_graph_textspan(self):
-        graph = tcf.Graph()
+        graph = tcf.Graph(label=self.options.label, weight=self.options.weight)
         textspans = [span for span in self.corpus.textstructure
                      if span.type == self.options.spantype]
         n = len(textspans)
@@ -163,17 +164,9 @@ class CooccurrenceWorker(TokenTestingWorker):
                           if self.test_token(token)])
             logging.debug('Using {} tokens.'.format(len(tokens)))
             for token in tokens:
-                name = getattr(token, self.options.label)
-                node = graph.node(name)
-                if node is None:
-                    node = graph.add_node(name, tokenIDs=[token.id])
-                else:
-                    if not token.id in node['tokenIDs']:
-                        node['tokenIDs'].append(token.id)
+                graph.node_for_token(token)
             for combo in combinations(tokens, 2):
-                names = [getattr(token, self.options.label)
-                         for token in combo]
-                graph.add_edge(*names)
+                graph.edge_for_tokens(*combo)
         return graph
 
 if __name__ == '__main__':
