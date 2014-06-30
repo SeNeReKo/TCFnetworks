@@ -40,6 +40,7 @@ class CooccurrenceWorker(TokenTestingWorker):
         'spantype': 'paragraph',
         'window': [2, 5],  # for method='window'
         'weight': 'count',  # 'count' or 'loglikelihood'
+        'type': 'postag',  # 'postag' (possibly other options in the future)
     })
 
     def __init__(self, **options):
@@ -154,7 +155,8 @@ class CooccurrenceWorker(TokenTestingWorker):
         return graph
 
     def build_graph_textspan(self):
-        graph = tcf.Graph(label=self.options.label, weight=self.options.weight)
+        graph = tcf.Graph(label=self.options.label, weight=self.options.weight,
+                          type=self.options.type)
         textspans = [span for span in self.corpus.textstructure
                      if span.type == self.options.spantype]
         n = len(textspans)
