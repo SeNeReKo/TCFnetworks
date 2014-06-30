@@ -25,14 +25,13 @@ import os.path
 
 from lxml import etree
 from tcflib import tcf
-from tcflib.service import ReplacingWorker, run_as_cli
+from tcflib.service import ExportingWorker, run_as_cli
 
 
-class GraphMLWorker(ReplacingWorker):
+class GraphMLWorker(ExportingWorker):
 
-    def run(self, input_data):
-        input_tree = etree.ElementTree(etree.fromstring(input_data,
-                                       parser=tcf.parser))
+    def export(self):
+        input_tree = self.corpus.tree
         xslt_file = os.path.join(os.path.dirname(__file__),
                                  'data', 'tcf2graphml.xsl')
         xslt_tree = etree.parse(xslt_file)

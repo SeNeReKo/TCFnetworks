@@ -22,7 +22,7 @@
         <key id="class" for="node" attr.name="class" attr.type="string" />
       </xsl:if>
       <xsl:if test="//tcf:graph/tcf:nodes/tcf:node[@type]">
-        <key id="type" for="node" attr.name="type" attr.type="boolean" />
+        <key id="type" for="node" attr.name="type" attr.type="string" />
       </xsl:if>
       <xsl:if test="//tcf:graph/tcf:edges/tcf:edge[@label]">
         <key id="weight" for="edge" attr.name="label" attr.type="string" />
