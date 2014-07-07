@@ -28,7 +28,7 @@
         <key id="weight" for="edge" attr.name="label" attr.type="string" />
       </xsl:if>
       <xsl:if test="//tcf:graph/tcf:edges/tcf:edge[@weight]">
-        <key id="weight" for="edge" attr.name="weight" attr.type="int" />
+        <key id="weight" for="edge" attr.name="weight" attr.type="float" />
       </xsl:if>
       <graph edgedefault="undirected">
         <xsl:apply-templates select="//tcf:graph/tcf:nodes/tcf:node"/>
@@ -50,7 +50,7 @@
   </xsl:template>
 
   <xsl:template match="tcf:edge">
-    <edge id="{ @ID }" source="{ @source }" target="{ @target }">
+    <edge source="{ @source }" target="{ @target }">
       <xsl:if test="@label">
         <data key="label"><xsl:value-of select="@label" /></data>
       </xsl:if>
