@@ -124,7 +124,7 @@ class TokenTestingWorker(AddingWorker):
     def test_token_lexical(self, token):
         if not token.postag.is_closed and not token.postag.is_a(ADVERB):
             return self.test_token_stopwords(token)
-        if token.named_entity is not None:
+        if token.entity is not None:
             return True
         if token.reference is not None:
             return True

@@ -39,7 +39,7 @@ class CooccurrenceWorker(TokenTestingWorker):
     __options__ = TokenTestingWorker.__options__.copy()
     __options__.update({
         'method': 'window',  # 'window', 'sentence' or 'textspan'
-        'spantype': 'paragraph',
+        'spantype': '',
         'window': [2, 5],  # for method='window'
         'weight': 'count',  # 'count' or 'loglikelihood'
         'type': 'postag',  # 'postag' (possibly other options in the future)
@@ -62,52 +62,6 @@ class CooccurrenceWorker(TokenTestingWorker):
                 len(graph.edges)))
         self.corpus.graph = graph
 
-    def get_unique_tokens(self, tokens):
-        unique_tokens = []
-        for token in tokens:
-            if self.test_token(token):
-                # Skip empty labels.
-                if not str(getattr(token, self.options.label)):
-                    continue
-                # Skip entity tokens other than the first one.
-                entity = token.named_entity
-                if entity is not None:
-                    if entity.get_value_list('tokenIDs')[0] != token.get('ID'):
-                        continue
-                unique_tokens.append(token)
-        return unique_tokens
-
-    def find_or_add_node(self, graph, token):
-        nodes = graph.find(tcf.P_TEXT + 'nodes')
-        label = str(getattr(token, self.options.label))
-        node = nodes.find_node(label)
-        if node is None:
-            node = nodes.add_node(label)
-        return node
-
-    def add_or_increment_edge(self, graph, source_token, target_token,
-                              unique=False):
-        if unique:
-            if (source_token, target_token) in self.combinations:
-                logging.debug('Combination already present, skip.')
-                return
-        self.combinations.append((source_token, target_token))
-        edges = graph.find(tcf.P_TEXT + 'edges')
-        source_node, target_node = [self.find_or_add_node(graph, token)
-                                      for token in (source_token, target_token)]
-        # Prevent loops
-        if source_node == target_node:
-            return
-        edge = edges.find_edge(source_node.get('ID'), target_node.get('ID'))
-        if edge is None:
-            # add edge
-            edge = edges.add_edge(source_node.get('ID'), target_node.get('ID'),
-                                  weight='1')
-        else:
-            # edge exists, increment weight
-            edge.set('weight', str(int(edge.get('weight')) + 1))
-        # TODO: Add edge instances
-
     def build_graph(self):
         logging.warn('No graph building method set.')
 
@@ -122,12 +76,22 @@ class CooccurrenceWorker(TokenTestingWorker):
         pathways-meaning-circulation-text-network-analysis/>.
 
         """
-        # TODO: Take paragraphs into account.
-        tokens = self.get_unique_tokens(self.corpus.tokens)
         graph = None
         for window in self.options.window:
             logging.info('Building network with window {}.'.format(window))
-            graph = self.build_graph_window_real(tokens, window, graph)
+            if self.options.spantype:
+                # When passing the spantype parameter, the network is built for
+                # each span (e.g., paragraph) separately.
+                textspans = [span for span in self.corpus.textstructure
+                             if span.type == self.options.spantype]
+                for span in textspans:
+                    tokens = [token for token in span.tokens
+                                  if self.test_token(token)]
+                    graph = self.build_graph_window_real(tokens, window, graph)
+            else:
+                tokens = [token for token in self.corpus.tokens
+                              if self.test_token(token)]
+                graph = self.build_graph_window_real(tokens, window, graph)
         return graph
 
     def build_graph_window_real(self, tokens, window=2, graph=None):
@@ -144,23 +108,31 @@ class CooccurrenceWorker(TokenTestingWorker):
 
         """
         if graph == None:
-            graph = tcf.Element(tcf.P_TEXT + 'graph')
-            nodes = tcf.SubElement(graph, tcf.P_TEXT + 'nodes')
-            edges = tcf.SubElement(graph, tcf.P_TEXT + 'edges')
-        else:
-            nodes = graph.find(tcf.P_TEXT + 'nodes')
-            edges = graph.find(tcf.P_TEXT + 'edges')
+            graph = tcf.Graph(label=self.options.label,
+                              weight=self.options.weight,
+                              type=self.options.type)
+        for token in tokens:
+            graph.node_for_token(token)
         for i in range(len(tokens) - (window - 1)):
             # try all combinations of words within window
-            for a, b in combinations(tokens[i:i + window], 2):
-                self.add_or_increment_edge(graph, a, b)
+            for combo in combinations(tokens[i:i + window], 2):
+                graph.edge_for_tokens(*combo)
         return graph
 
     def build_graph_textspan(self):
+        if self.options.spantype:
+            textspans = [span for span in self.corpus.textstructure
+                         if span.type == self.options.spantype]
+        else:
+            textspans = self.corpus.textstructure
+        return self.build_graph_textspan_real(textspans)
+
+    def build_graph_sentence(self):
+        return self.build_graph_textspan_real(self.corpus.sentences)
+
+    def build_graph_textspan_real(self, textspans):
         graph = tcf.Graph(label=self.options.label, weight=self.options.weight,
                           type=self.options.type)
-        textspans = [span for span in self.corpus.textstructure
-                     if span.type == self.options.spantype]
         n = len(textspans)
         for i, span in enumerate(textspans, start=1):
             logging.debug('Creating network for textspan {}/{}.'.format(i, n))
