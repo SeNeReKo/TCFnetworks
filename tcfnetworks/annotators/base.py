@@ -43,24 +43,29 @@ class TokenTestingWorker(AddingWorker):
     __options__ = {
         'nodes': 'lexical',
         'label': 'semantic_unit',
-        'stopwords': '',
+        'stopwords': [''],
+        'stopwords_preset': '',
         'postag': [''],
     }
 
     def __init__(self, **options):
         super().__init__(**options)
         # Set up stop-words
-        if self.options.stopwords:
+        self.stopwords = []
+        if self.options.stopwords and self.options.stopwords[0]:
+            self.stopwords.extend(self.options.stopwords)
+        if self.options.stopwords_preset:
             stopwordspath = os.path.join(os.path.dirname(__file__),
                                          'data', 'stopwords',
-                                         self.options.stopwords)
+                                         self.options.stopwords_preset)
             try:
                 with open(stopwordspath) as stopwordsfile:
-                    self.stopwords = [token.strip() for token
-                                      in stopwordsfile.readlines() if token]
+                    stopwords = [token.strip() for token
+                                 in stopwordsfile.readlines() if token]
+                    self.stopwords.extend(stopwords)
             except FileNotFoundError:
                 logging.error('No stopwords list "{}".'.format(
-                        self.options.stopwords))
+                        self.options.stopwords_preset))
                 sys.exit(-1)
         # Set up filtering.
         # First, check hard-coded variants
