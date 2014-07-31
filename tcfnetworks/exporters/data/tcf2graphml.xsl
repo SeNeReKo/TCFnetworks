@@ -4,9 +4,11 @@
   xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
   xmlns:xml="http://www.w3.org/XML/1998/namespace"
   xmlns:tcf="http://www.dspin.de/data/textcorpus"
-  xmlns:gexf="http://graphml.graphdrawing.org/xmlns"
+  xmlns:str="http://exslt.org/strings"
+  xmlns:graphml="http://graphml.graphdrawing.org/xmlns"
   xmlns="http://graphml.graphdrawing.org/xmlns"
-  exclude-result-prefixes="tcf">
+  exclude-result-prefixes="tcf"
+  extension-element-prefixes="str">
 
   <xsl:output
     method="xml"
@@ -23,6 +25,9 @@
       </xsl:if>
       <xsl:if test="//tcf:graph/tcf:nodes/tcf:node[@type]">
         <key id="type" for="node" attr.name="type" attr.type="string" />
+      </xsl:if>
+      <xsl:if test="//tcf:graph/tcf:nodes/tcf:node[@tokenIDs]">
+        <key id="count" for="node" attr.name="count" attr.type="int" />
       </xsl:if>
       <xsl:if test="//tcf:graph/tcf:edges/tcf:edge[@label]">
         <key id="weight" for="edge" attr.name="label" attr.type="string" />
@@ -45,6 +50,9 @@
       </xsl:if>
       <xsl:if test="@type">
         <data key="type"><xsl:value-of select="@type" /></data>
+      </xsl:if>
+      <xsl:if test="@tokenIDs">
+        <data key="count"><xsl:value-of select="count(str:tokenize(@tokenIDs))" /></data>
       </xsl:if>
     </node>
   </xsl:template>
