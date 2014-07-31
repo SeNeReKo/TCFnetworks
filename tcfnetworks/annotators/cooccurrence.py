@@ -24,7 +24,7 @@ This annotator implements cooccurrence networks as a TCF compatible service.
 import sys
 import os
 import logging
-from itertools import combinations
+from itertools import combinations, islice
 from collections import Counter
 from math import log
 
@@ -32,6 +32,11 @@ from tcflib import tcf
 from tcflib.service import run_as_cli
 
 from tcfnetworks.annotators.base import TokenTestingWorker
+
+
+def n_grams(a, n):
+    z = (islice(a, i, None) for i in range(n))
+    return zip(*z)
 
 
 class CooccurrenceWorker(TokenTestingWorker):
@@ -42,7 +47,7 @@ class CooccurrenceWorker(TokenTestingWorker):
         'spantype': '',
         'window': [2, 5],  # for method='window'
         'weight': 'count',  # 'count' or 'loglikelihood'
-        'type': 'postag',  # 'postag' (possibly other options in the future)
+        'type': 'postag',  # 'postag' or 'entityclass'
     })
 
     def __init__(self, **options):
@@ -113,26 +118,42 @@ class CooccurrenceWorker(TokenTestingWorker):
                               type=self.options.type)
         for token in tokens:
             graph.node_for_token(token)
-        for i in range(len(tokens) - (window - 1)):
+        for n_gram in n_grams(tokens, window):
             # try all combinations of words within window
-            for combo in combinations(tokens[i:i + window], 2):
+            for combo in combinations(n_gram, 2):
                 graph.edge_for_tokens(*combo)
         return graph
 
-    def build_graph_textspan(self):
+    def build_graph_textspan(self, window=False):
         if self.options.spantype:
             textspans = [span for span in self.corpus.textstructure
                          if span.type == self.options.spantype]
         else:
             textspans = self.corpus.textstructure
-        return self.build_graph_textspan_real(textspans)
+        return self.build_graph_textspan_real(textspans, window=window)
+
+    def build_graph_textspan_window(self):
+        return self.build_graph_textspan(window=True)
 
     def build_graph_sentence(self):
         return self.build_graph_textspan_real(self.corpus.sentences)
 
-    def build_graph_textspan_real(self, textspans):
+    def build_graph_sentence_window(self):
+        return self.build_graph_textspan_real(self.corpus.sentences,
+                                              window=True)
+
+    def build_graph_textspan_real(self, textspans, window=False):
         graph = tcf.Graph(label=self.options.label, weight=self.options.weight,
                           type=self.options.type)
+        if window:
+            # Do not use textspans directly, but use windows of x textspans.
+            textspans_old, textspans = list(textspans), []
+            for window in self.options.window:
+                for n_gram in n_grams(textspans_old, window):
+                    span = tcf.TextSpan()
+                    for span_old in n_gram:
+                        span.tokens.extend(span_old.tokens)
+                    textspans.append(span)
         n = len(textspans)
         for i, span in enumerate(textspans, start=1):
             logging.debug('Creating network for textspan {}/{}.'.format(i, n))
