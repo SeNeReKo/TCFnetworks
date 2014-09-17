@@ -24,7 +24,7 @@ This annotator implements cooccurrence networks as a TCF compatible service.
 import sys
 import os
 import logging
-from itertools import combinations, islice
+from itertools import combinations
 from collections import Counter
 from math import log
 
@@ -35,8 +35,8 @@ from tcfnetworks.annotators.base import TokenTestingWorker
 
 
 def n_grams(a, n):
-    z = (islice(a, i, None) for i in range(n))
-    return zip(*z)
+    for i in range(len(a) - (n - 1)):
+        yield a[i:i + n]
 
 
 class CooccurrenceWorker(TokenTestingWorker):
