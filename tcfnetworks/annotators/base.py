@@ -138,7 +138,7 @@ class TokenTestingWorker(AddingWorker):
             return True
         if not token.postag.is_closed and not token.postag.is_a(ADVERB):
             return self.test_token_stopwords(token)
-        if token.named_entity is not None:
+        if token.entity is not None:
             return True
         if token.reference is not None:
             return True
@@ -152,7 +152,7 @@ class TokenTestingWorker(AddingWorker):
         return True
 
     def test_token_entity(self, token, resolve=True):
-        if token.named_entity is not None:
+        if token.entity is not None:
             return True
         if resolve and token.reference is not None:
             for reftoken in token.reference.tokens:
@@ -161,8 +161,8 @@ class TokenTestingWorker(AddingWorker):
         return False
 
     def test_token_actor(self, token, resolve=True):
-        if token.named_entity is not None:
-            if token.named_entity.get('class') in ('PER', 'ORG'):
+        if token.entity is not None:
+            if token.entity.class_ in ('PER', 'ORG'):
                 # FIXME: Use proper tags instead of hardcoded CoNLL2002 tags.
                 return True
         if resolve and token.reference is not None:
