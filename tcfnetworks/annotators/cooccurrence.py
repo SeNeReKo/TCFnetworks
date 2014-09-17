@@ -47,7 +47,6 @@ class CooccurrenceWorker(TokenTestingWorker):
         'spantype': '',
         'window': [2, 5],  # for method='window'
         'weight': 'count',  # 'count' or 'loglikelihood'
-        'type': 'postag',  # 'postag' or 'entityclass'
     })
 
     def __init__(self, **options):
@@ -114,8 +113,7 @@ class CooccurrenceWorker(TokenTestingWorker):
         """
         if graph == None:
             graph = tcf.Graph(label=self.options.label,
-                              weight=self.options.weight,
-                              type=self.options.type)
+                              weight=self.options.weight)
         for token in tokens:
             graph.node_for_token(token)
         for n_gram in n_grams(tokens, window):
@@ -143,8 +141,7 @@ class CooccurrenceWorker(TokenTestingWorker):
                                               window=True)
 
     def build_graph_textspan_real(self, textspans, window=False):
-        graph = tcf.Graph(label=self.options.label, weight=self.options.weight,
-                          type=self.options.type)
+        graph = tcf.Graph(label=self.options.label, weight=self.options.weight)
         if window:
             # Do not use textspans directly, but use windows of x textspans.
             textspans_old, textspans = list(textspans), []
