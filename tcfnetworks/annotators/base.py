@@ -110,9 +110,7 @@ class TokenTestingWorker(AddingWorker):
         logging.warn('No token test method set.')
 
     def test_token_stopwords(self, token):
-        if self.options.stopwords:
-            token_label = str(getattr(token, self.options.label))
-            if token_label in self.stopwords:
+        if token.text in self.stopwords:
                 return False
         return True
 
