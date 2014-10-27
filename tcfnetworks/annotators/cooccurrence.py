@@ -64,7 +64,7 @@ class CooccurrenceWorker(TokenTestingWorker):
         logging.info('Graph has {} nodes and {} edges.'.format(
                 len(graph.nodes),
                 len(graph.edges)))
-        self.corpus.graph = graph
+        self.corpus.add_layer(graph)
 
     def build_graph(self):
         logging.warn('No graph building method set.')
