@@ -161,19 +161,6 @@ class CooccurrenceWorker(TokenTestingWorker):
                 graph.node_for_token(token)
             for combo in combinations(tokens, 2):
                 graph.edge_for_tokens(*combo)
-        if self.options.weight == 'loglikelihood':
-            # Re-calculate weight to use loglikelihood instead of simple 
-            # cooccurrence counts.
-            c = Counter([getattr(token, self.options.label)
-                         for token in self.corpus.tokens])
-            n = len(self.corpus.tokens)
-            for edge in graph.edges:
-                c1 = c[edge.source['name']]
-                c2 = c[edge.target['name']]
-                c12 = edge['weight']
-                p = c2/n
-                ll = log(p ** c12 * (1 - p) ** (c1-c12))
-                edge['weight'] = ll * -2
         return graph
 
 if __name__ == '__main__':
