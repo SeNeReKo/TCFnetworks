@@ -73,6 +73,11 @@ class CooccurrenceWorker(TokenTestingWorker):
         """
         This method implements a word-window based cooccurrence network.
 
+        If the option `spantype` is set, the network is built for each span
+        (e.g., paragraph) separately. If `spantype` has the special value
+        `sentence`, the sentence layer is used instead of the textstructure
+        layer.
+
         This implementation is based on the method and algorithm described in:
         Paranyushkin, Dmitry. 2011. „Identifying the Pathways for Meaning 
         Circulation using Text Network Analysis“. Nodus Labs.
@@ -86,8 +91,11 @@ class CooccurrenceWorker(TokenTestingWorker):
             if self.options.spantype:
                 # When passing the spantype parameter, the network is built for
                 # each span (e.g., paragraph) separately.
-                textspans = [span for span in self.corpus.textstructure
-                             if span.type == self.options.spantype]
+                if self.options.spantype == 'sentence':
+                    textspans = self.corpus.sentences
+                else:
+                    textspans = [span for span in self.corpus.textstructure
+                                 if span.type == self.options.spantype]
                 for span in textspans:
                     tokens = [token for token in span.tokens
                                   if self.test_token(token)]
