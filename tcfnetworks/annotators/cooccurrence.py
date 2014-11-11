@@ -46,6 +46,7 @@ class CooccurrenceWorker(TokenTestingWorker):
         'method': 'window',  # 'window', 'sentence' or 'textspan'
         'spantype': '',
         'window': [2, 5],  # for method='window'
+        'unique': False,
         'weight': 'count',  # 'count' or 'loglikelihood'
     })
 
@@ -128,7 +129,7 @@ class CooccurrenceWorker(TokenTestingWorker):
             # try all combinations of words within window
             for combo in combinations(n_gram, 2):
                 try:
-                    graph.edge_for_tokens(*combo)
+                    graph.edge_for_tokens(*combo, unique=self.options.unique)
                 except tcf.LoopError:
                     continue
         return graph
@@ -172,7 +173,7 @@ class CooccurrenceWorker(TokenTestingWorker):
                 graph.node_for_token(token)
             for combo in combinations(tokens, 2):
                 try:
-                    graph.edge_for_tokens(*combo)
+                    graph.edge_for_tokens(*combo, unique=self.options.unique)
                 except tcf.LoopError:
                     continue
         return graph
