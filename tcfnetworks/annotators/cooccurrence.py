@@ -119,7 +119,10 @@ class CooccurrenceWorker(TokenTestingWorker):
         for n_gram in n_grams(tokens, window):
             # try all combinations of words within window
             for combo in combinations(n_gram, 2):
-                graph.edge_for_tokens(*combo)
+                try:
+                    graph.edge_for_tokens(*combo)
+                except tcf.LoopError:
+                    continue
         return graph
 
     def build_graph_textspan(self, window=False):
@@ -160,7 +163,10 @@ class CooccurrenceWorker(TokenTestingWorker):
             for token in tokens:
                 graph.node_for_token(token)
             for combo in combinations(tokens, 2):
-                graph.edge_for_tokens(*combo)
+                try:
+                    graph.edge_for_tokens(*combo)
+                except tcf.LoopError:
+                    continue
         return graph
 
 if __name__ == '__main__':
