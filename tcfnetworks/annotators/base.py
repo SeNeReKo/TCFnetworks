@@ -92,7 +92,7 @@ class TokenTestingWorker(AddingWorker):
                     return self.test_token_stopwords(token)
                 if resolve and token.reference is not None:
                     for reftoken in token.reference.tokens:
-                        if test_token_postag(reftoken, False):
+                        if test_token_postag(self, reftoken, False):
                             return self.test_token_stopwords(reftoken)
                 return False
             self.test_token = MethodType(test_token_postag, self)
