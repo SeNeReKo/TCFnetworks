@@ -45,6 +45,7 @@ class TokenTestingWorker(AddingWorker):
         'label': 'semantic_unit',
         'stopwords': [''],
         'stopwords_preset': '',
+        'stopwords_feature': 'text',
         'postag': [''],
     }
 
@@ -110,7 +111,7 @@ class TokenTestingWorker(AddingWorker):
         logging.warn('No token test method set.')
 
     def test_token_stopwords(self, token):
-        if token.text in self.stopwords:
+        if getattr(token, self.options.stopwords_feature) in self.stopwords:
                 return False
         return True
 
