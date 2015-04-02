@@ -96,7 +96,12 @@ class DependencyWorker(TokenTestingWorker):
                     # to specify the type.
                     vertex['type'] = bool(i)
             # Add edges.
-            parse_edges.append(graph.edge_for_tokens(*tokens))
+            try:
+                edge = graph.edge_for_tokens(*tokens)
+            except tcf.LoopError:
+                continue
+            else:
+                parse_edges.append(edge)
         if self.options.distance > 1:
             # Add additional edges for each pair of nodes with path length <
             # distance.
@@ -107,13 +112,20 @@ class DependencyWorker(TokenTestingWorker):
             for source, target in combinations(parse_tokens, 2):
                 source_node = graph.node_for_token(source)
                 target_node = graph.node_for_token(target)
-                distance = parse_graph.shortest_paths(source_node['name'],
-                            target_node['name'])[0][0]
+                try:
+                    distance = parse_graph.shortest_paths(source_node['name'],
+                                target_node['name'])[0][0]
+                except ValueError:
+                    # Token is not in the subgraph
+                    continue
                 if distance <= self.options.distance:
                     additional_edges.append((source, target))
             # Now add additional edges.
             for source, target in additional_edges:
-                graph.edge_for_tokens(source, target)
+                try:
+                    graph.edge_for_tokens(source, target)
+                except tcf.LoopError:
+                    continue
         return graph
 
     def find_edges(self, parse, head):
