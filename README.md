@@ -26,3 +26,15 @@ For testing purposes, the easiest way to run the network tools is to use them as
 For compatibility with other applications for network analysis, exporters to standard network formats are provided:
 
     annotators/cooccurrence.py < MyTCFFile.xml | exporters/graphml > MyNetworkFile.graphml
+
+Installation
+------------
+
+TCFnetworks is available from PyPI, so you can install it with pip:
+
+    pip install tcfnetworks
+
+You can install the development version directly from GitHub:
+
+    pip install git+https://github.com/SeNeReKo/TCFnetworks.git
+
