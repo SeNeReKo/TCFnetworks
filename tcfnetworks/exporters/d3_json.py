@@ -17,7 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 """
-GEXF exporter for TCF graphs.
+JSON exporter for TCF graphs.
 
 """
 
@@ -25,21 +25,20 @@ import os.path
 
 from lxml import etree
 from tcflib import tcf
-from tcflib.service import ReplacingWorker, run_as_cli
+from tcflib.service import ExportingWorker, run_as_cli
 
 
-class GEXFWorker(ReplacingWorker):
+class JSONWorker(ExportingWorker):
 
-    def run(self, input_data):
-        input_tree = etree.ElementTree(etree.fromstring(input_data,
-                                       parser=tcf.parser))
+    def export(self):
+        input_tree = self.corpus.tree
         xslt_file = os.path.join(os.path.dirname(__file__),
                                  'data', 'tcf2json.xsl')
         xslt_tree = etree.parse(xslt_file)
         transform = etree.XSLT(xslt_tree)
-        output = transform(input_tree)
+        output = str(transform(input_tree))
         return output
 
 
 if __name__ == '__main__':
-    run_as_cli(GEXFWorker)
+    run_as_cli(JSONWorker)
