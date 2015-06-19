@@ -163,7 +163,8 @@ class TokenTestingWorker(AddingWorker):
 
     def test_token_actor(self, token, resolve=True):
         if token.entity is not None:
-            if token.entity.class_ in ('PER', 'ORG'):
+            if token.entity.class_ in ('PER', 'PERSON',
+                                       'ORG', 'ORGANIZATION'):
                 # FIXME: Use proper tags instead of hardcoded CoNLL2002 tags.
                 return True
         if resolve and token.reference is not None:
