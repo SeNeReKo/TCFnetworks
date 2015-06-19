@@ -34,9 +34,18 @@ from tcflib.service import run_as_cli
 from tcfnetworks.annotators.base import TokenTestingWorker
 
 
-def n_grams(a, n):
-    for i in range(len(a) - (n - 1)):
-        yield a[i:i + n]
+def n_grams(a, n, nofadeout=False):
+    if nofadeout:
+        starts = range(-(n - 1), len(a))
+    else:
+        starts = range(len(a) - (n - 1))
+    for i in starts:
+        j = i + n
+        if i < 0:
+            i = 0
+        if j > len(a):
+            j = len(a)
+        yield a[i:j]
 
 
 class CooccurrenceWorker(TokenTestingWorker):
@@ -46,6 +55,7 @@ class CooccurrenceWorker(TokenTestingWorker):
         'method': 'window',  # 'window', 'sentence' or 'textspan'
         'spantype': '',
         'window': [2, 5],  # for method='window'
+        'nofadeout': False,  # prevent thin connections at span borders
         'unique': False,
         'weight': 'count',  # 'count' or 'loglikelihood'
     })
@@ -125,7 +135,8 @@ class CooccurrenceWorker(TokenTestingWorker):
                               weight=self.options.weight)
         for token in tokens:
             graph.node_for_token(token)
-        for n_gram in n_grams(tokens, window):
+        for n_gram in n_grams(tokens, window,
+                              nofadeout=self.options.nofadeout):
             # try all combinations of words within window
             for combo in combinations(n_gram, 2):
                 try:
