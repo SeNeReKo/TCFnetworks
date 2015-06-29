@@ -5,13 +5,13 @@ from distutils.core import setup
 from glob import glob
 
 setup(name='TCFnetworks',
-      version='0.2.1',
+      version='0.2.2',
       description='Python TCF network services',
       author='Frederik Elwert',
       author_email='frederik.elwert@web.de',
       url='https://github.com/SeNeReKo/TCFnetworks',
       packages=['tcfnetworks', 'tcfnetworks.annotators',
-      		    'tcfnetworks.exporters'],
+                'tcfnetworks.exporters'],
       package_data={'tcfnetworks.exporters': ['data/tcf2graphml.xsl',
-      										  'data/tcf2json.xsl']},
+                                              'data/tcf2json.xsl']},
      )
