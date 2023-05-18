@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+
+svg {
+  float: left;
+  position: fixed;
+}
+
+.node {
+  stroke: #fff;
+  stroke-width: 1.5px;
+}
+
+.link {
+  stroke: #999;
+}
+
+.label {
+  text-anchor: middle;
+  font-family: sans-serif;
+  font-size: small;
+  fill: #555;
+  pointer-events: none;
+}
+
+.outline {
+  stroke: #fff;
+  stroke-width: 2px;
+}
+
+#text {
+  margin-left: 768px;
+  font-family: sans-serif;
+  font-size: small;
+  color: #555;
+}
+
+.sentence {
+  border-bottom: 1px solid #ddd;
+  padding: .2em 0;
+}
+
+</style>
+</head>
+<body>
+<script>
+${d3}
+</script>
+<script>
+var graph = ${data};
+</script>
+<script>
+// Set up logic
+var width = 768,
+    height = 700;
+
+var color = d3.scale.category20();
+
+var force = d3.layout.force()
+    .charge(-300)
+    .linkDistance(60)
+    .gravity(0.2)
+    .size([width, height]);
+
+// Set up chrome
+var svg = d3.select("body").append("svg")
+    .attr("width", width)
+    .attr("height", height);
+
+var canvas = svg.append("g");
+
+svg.on("contextmenu", function (d, i) { d3.event.preventDefault(); });
+svg.call(d3.behavior.zoom().on("zoom", redraw));
+
+function redraw() {
+  canvas.attr("transform",
+      "translate(" + d3.event.translate[0] + "," + 
+                     d3.event.translate[1] +
+      ") scale(" + d3.event.scale + ")");
+}
+
+var textDiv = d3.select("body").append("div")
+    .attr("id", "text");
+
+// Load data
+window.addEventListener("DOMContentLoaded", function() {
+  force
+      .nodes(graph.nodes)
+      .links(graph.links)
+      .start();
+
+  // Create elements from data
+  var link = canvas.selectAll(".link")
+      .data(graph.links)
+    .enter().append("line")
+      .attr("class", "link")
+      .style("stroke-width", function(d) { return Math.sqrt(d.weight); });
+
+  link.on("mouseover", showLinkDetails);
+  link.on("mouseout", hideDetails);
+  link.on("click", filterTextByLink);
+
+  var node = canvas.selectAll(".node")
+      .data(graph.nodes)
+    .enter().append("circle")
+      .attr("id", function(d) { return d.id; })
+      .attr("class", "node")
+      .attr("r", 5)
+      .style("fill", function(d) { return color(d.group); })
+      .call(force.drag);
+
+//  node.append("title")
+//      .text(function(d) { return d.name; });
+
+  node.on("mouseover", showNodeDetails);
+  node.on("mouseout", hideDetails);
+  node.on("click", filterTextByNode);
+
+  var label = canvas.selectAll(".label")
+      .data(graph.nodes)
+    .enter().append("g")
+      .attr("id", function(d) { return "l" + d.id; })
+      .style("display", "none");
+
+  label.append("text")
+      .attr("class", "label outline")
+      .text(function(d) { return d.name; });
+
+  label.append("text")
+      .attr("class", "label")
+      .text(function(d) { return d.name; });
+
+  var sentence = textDiv.selectAll("div")
+      .data(graph.text)
+    .enter().append("div")
+      .attr("id", function(d) { return d.id; })
+      .attr("class", "sentence");
+
+  var word = sentence.selectAll("span")
+      .data(function(d) { return d.words; })
+    .enter().append("span")
+      .attr("id", function(d) { return d.id; })
+      .text(function(d, i) {
+        if ([",",".","?","!","‘","’","'"].indexOf(d.text) > -1) {
+          return d.text;
+        } else {
+          return " " + d.text;
+        }
+      });
+
+  // Apply layout
+  force.on("tick", function() {
+    link.attr("x1", function(d) { return d.source.x; })
+        .attr("y1", function(d) { return d.source.y; })
+        .attr("x2", function(d) { return d.target.x; })
+        .attr("y2", function(d) { return d.target.y; });
+
+    node.attr("cx", function(d) { return d.x; })
+        .attr("cy", function(d) { return d.y; });
+
+    label.selectAll("text").attr("x", function(d) { return d.x; })
+        .attr("y", function(d) { return d.y; });
+  });
+
+  // Event handlers
+  function showLinkDetails(d, i) {
+    link.style("stroke", function(l) {
+      if (l == d) { return "#555"; }
+      else { return "#ddd"; }
+    });
+    canvas.select("#l" + d.target.id)
+        .style("display", "block");
+    canvas.select("#l" + d.source.id)
+        .style("display", "block");
+  }
+
+  function showNodeDetails(d, i) {
+    canvas.select("#l" + d.id)
+        .style("display", "block");
+    link.style("stroke", function(l) {
+      if (l.source == d || l.target == d) { return "#555"; }
+      else { return "#ddd"; }
+    });
+    link.each(function(l, i) {
+      if (l.source == d) {
+        canvas.select("#l" + l.target.id)
+            .style("display", "block");
+      } else if (l.target == d) {
+          canvas.select("#l" + l.source.id)
+            .style("display", "block");
+      }
+    });
+  }
+
+  function hideDetails(d, i) {
+    label.style("display", "none");
+    link.style("stroke", null);
+  }
+
+  function filterTextByLink(d, i) {
+    // Filter sentences
+    // TODO: Use instances, not same tokens. Requires TCF addition.
+    sentence.style("display", "none");
+    sentence.filter(function(s) {
+      var intersect = s.tokens.filter(function(n) {
+        return d.source.tokens.indexOf(n) > -1;
+      });
+      return intersect.length > 0;
+      })
+      .filter(function(s) {
+      var intersect = s.tokens.filter(function(n) {
+        return d.target.tokens.indexOf(n) > -1;
+      });
+      return intersect.length > 0;
+      })
+      .style("display", "block");
+    // Highlight words
+    word.style("color", null);
+    word.filter(function(w) {
+      return (d.source.tokens.indexOf(w.id) > -1 ||
+              d.target.tokens.indexOf(w.id) > -1);
+      })
+        .style("color", "#d62728");
+  }
+
+  function filterTextByNode(d, i) {
+    // Filter sentences
+    sentence.style("display", "none");
+    sentence.filter(function(s) {
+      var intersect = s.tokens.filter(function(n) {
+        return d.tokens.indexOf(n) > -1;
+      });
+      return intersect.length > 0;
+    }).style("display", "block");
+    // Highlight words
+    word.style("color", null);
+    word.filter(function(w) { return d.tokens.indexOf(w.id) > -1; })
+        .style("color", "#d62728");
+  }
+
+});
+
+</script>
+</body>
+</html>
