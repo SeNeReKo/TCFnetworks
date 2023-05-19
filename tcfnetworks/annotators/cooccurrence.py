@@ -28,6 +28,7 @@ from itertools import combinations
 from collections import Counter
 from math import log
 
+from tqdm import tqdm
 from tcflib import tcf
 from tcflib.service import run_as_cli
 
@@ -133,10 +134,11 @@ class CooccurrenceWorker(TokenTestingWorker):
         if graph == None:
             graph = tcf.Graph(label=self.options.label,
                               weight=self.options.weight)
-        for token in tokens:
+        for token in tqdm(tokens, desc='Adding nodes'):
             graph.node_for_token(token)
-        for n_gram in n_grams(tokens, window,
-                              nofadeout=self.options.nofadeout):
+        for n_gram in tqdm(n_grams(tokens, window,
+                                   nofadeout=self.options.nofadeout),
+                           desc='Adding edges'):
             # try all combinations of words within window
             for combo in combinations(n_gram, 2):
                 try:
