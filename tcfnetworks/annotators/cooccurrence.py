@@ -58,11 +58,14 @@ class CooccurrenceWorker(TokenTestingWorker):
         'window': [2, 5],  # for method='window'
         'nofadeout': False,  # prevent thin connections at span borders
         'unique': False,
-        'weight': 'count',  # 'count' or 'loglikelihood'
+        'weight': 'count',  # 'count', 'llr' or 'pmi'
     })
 
     def __init__(self, **options):
         super().__init__(**options)
+        if self.options.weight in ('llr', 'pmi') and not self.options.unique:
+            logging.warning('Cooccurrence measures only work with '
+                            'unique=True.')
         try:
             self.build_graph = getattr(self,
                     'build_graph_{}'.format(self.options.method))
